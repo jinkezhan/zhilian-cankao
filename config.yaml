@@ -1,0 +1,74 @@
+﻿# 需求预测模块配置（企业可按自身计划周期调整）
+#
+# 修改后重新运行：
+#   .venv\Scripts\python.exe app\forecast_ensemble.py
+#   .venv\Scripts\python.exe app\forecast_cumulative.py
+
+forecast:
+  # 未来累计需求跨度（周）。企业按采购提前期/补货周期调整，例如 4 表示预测未来 4 周总需求。
+  horizon_weeks: 4
+  # 参与建模的 Top-N SKU 数量
+  top_n: 10
+  # 留出验证的周数（也是累计需求验证的起点周数）
+  val_weeks: 12
+  # 累计需求覆盖率回测的起点周数（越大越稳，默认最近 52 周）
+  coverage_backtest_weeks: 52
+  # 分位数预测线（P50/P90/P95）
+  quantiles: [0.5, 0.9, 0.95]
+  # 价格档位切分（按 Product Price，左闭右开，最后一段到上限）
+  price_band_edges: [0, 50, 100, 250, 100000]
+  # 累计需求目标是否按“近期水平”归一化：target / (H × 近4周均值)
+  # true 时模型学习倍数关系，可缓解不同 SKU 量纲差异和水平漂移；预测时再乘回。
+  normalize_by_recent_level: true
+  # 分位数 LightGBM 参数（在验证集上调过，容量偏小、抗过拟合）
+  quantile_num_boost_round: 100
+  quantile_learning_rate: 0.05
+  quantile_num_leaves: 5
+  quantile_min_data_in_leaf: 60
+
+  # 保形校准（conformalized quantile regression）
+  # 用“目标窗口已完全实现”的历史起点残差，逐起点修正 P50/P90/P95，避免未来信息泄漏。
+  conformal_calibration: true
+  # 校准窗口长度：每个起点回看最近多少个可用起点（每个起点含 Top-N 个 SKU 各一条残差）
+  # 8 个起点 = 80 条残差；对应约 2 个月的近期水平，短于 2017-06 台阶后的适应期。
+  conformal_window_origins: 8
+  # 只向上修正：本轮诊断是“系统性低估”，没有低估证据时不压低分位线
+  conformal_positive_only: true
+  # 可用校准起点少于该值时偏移量置 0（回测最前面的起点没有足够历史）
+  conformal_min_origins: 4
+  # 校准窗口（由脚本逐次记录，写入 output/forecast_conformal_offsets.csv）：
+  #   起点 t 只使用 u + horizon <= t 的起点残差，即最近 8 个“未来窗口已实现”的起点。
+  #   回测最早 4 个起点因不足 conformal_min_origins 不校准；此后逐起点滚动。
+
+# 库存优化模块配置（企业可按自身补货政策调整）
+#
+# 修改后重新运行：
+#   .venv\Scripts\python.exe app\inventory_policy.py
+inventory:
+  # 采购提前期（周）：从下单到到货的周数
+  lead_time_weeks: 4
+  # 目标服务水平：0.80~0.95。0.90 直接取 P90，0.95 取 P95；
+  # 其他取值在 P50/P90/P95 之间线性插值（近似，不外推）
+  service_level_target: 0.90
+  # 补货检查周期（周）：1 表示每周检查一次
+  review_period_weeks: 1
+  # 单次订货固定成本（元/次）
+  order_cost: 500
+  # 单位周持有成本（元/件/周）
+  holding_cost_per_unit_week: 0.5
+  # 单位缺货惩罚成本（元/件）
+  stockout_cost_per_unit: 10
+  # 最小起订量（件）
+  moq: 10
+  # 包装倍数：订货量向上取整到该倍数（件）
+  pack_size: 1
+  # 仿真初始库存 = 若干周需求（按仿真起点前 4 周均值折算）
+  initial_inventory_weeks: 4
+  # 漂移监测（drift_monitor）：用最近 window_weeks 周“实际 vs 预测 P50”的偏差判断。
+  # 判断规则：最近连续 consecutive_weeks 个已实现起点的偏差同向，且平均相对偏差 >= threshold_pct。
+  drift_monitor_enabled: true
+  drift_monitor_window_weeks: 4
+  drift_monitor_threshold_pct: 0.05
+  drift_monitor_consecutive_weeks: 3
+  # 检出漂移时把目标水位从 P90 自动升到 P95
+  drift_escalate_quantile: true

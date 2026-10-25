@@ -1,0 +1,54 @@
+﻿column,dtype,non_null_count,missing_count,missing_ratio,unique_count
+Product Description,str,7585,172934,0.958,163
+Order Zipcode,float64,32425,148094,0.8204,722
+shipping date (DateOrders),datetime64[us],172934,7585,0.042,61261
+Shipping Mode,str,172934,7585,0.042,4
+order date (DateOrders),datetime64[us],174374,6145,0.034,63642
+Product Category Id,object,175938,4581,0.0254,128
+Order Status,object,175938,4581,0.0254,86
+Product Card Id,float64,177515,3004,0.0166,150
+Order State,str,177515,3004,0.0166,1144
+Customer City,str,180519,0,0.0,563
+Customer Country,str,180519,0,0.0,2
+Customer Email,str,180519,0,0.0,1
+Category Name,str,180519,0,0.0,50
+Delivery Status,str,180519,0,0.0,4
+Late_delivery_risk,int64,180519,0,0.0,2
+Category Id,int64,180519,0,0.0,51
+Type,str,180519,0,0.0,4
+Days for shipping (real),int64,180519,0,0.0,7
+Days for shipment (scheduled),int64,180519,0,0.0,4
+Benefit per order,float64,180519,0,0.0,21998
+Sales per customer,float64,180519,0,0.0,2927
+Department Id,int64,180519,0,0.0,11
+Customer Zipcode,float64,180516,3,0.0,995
+Customer Street,str,180519,0,0.0,7458
+Customer State,object,180519,0,0.0,46
+Customer Segment,str,180519,0,0.0,3
+Customer Password,str,180519,0,0.0,1
+Customer Lname,str,180511,8,0.0,1109
+Customer Id,int64,180519,0,0.0,20652
+Customer Fname,str,180519,0,0.0,782
+Department Name,str,180519,0,0.0,11
+Longitude,float64,180519,0,0.0,4487
+Latitude,float64,180519,0,0.0,11250
+Market,str,180519,0,0.0,5
+Order City,str,180519,0,0.0,3597
+Order Country,object,180519,0,0.0,2233
+Order Customer Id,object,180519,0,0.0,22744
+Order Item Quantity,float64,180519,0,0.0,153
+Order Item Profit Ratio,float64,180519,0,0.0,167
+Order Item Product Price,float64,180519,0,0.0,224
+Order Item Id,float64,180519,0,0.0,174414
+Order Item Discount Rate,float64,180519,0,0.0,6163
+Order Item Discount,float64,180519,0,0.0,1024
+Order Item Cardprod Id,float64,180519,0,0.0,439
+Order Id,int64,180519,0,0.0,63663
+Sales,float64,180519,0,0.0,955
+Order Item Total,float64,180519,0,0.0,6331
+Order Profit Per Order,object,180519,0,0.0,21839
+Order Region,str,180519,0,0.0,158
+Product Name,object,180519,0,0.0,172
+Product Image,object,180519,0,0.0,248
+Product Status,object,180519,0,0.0,1572
+Product Price,object,180519,0,0.0,1096

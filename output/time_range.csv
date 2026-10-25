@@ -1,0 +1,3 @@
+﻿field,label,start,end,valid_count,invalid_count,span_days
+order date (DateOrders),下单时间,2015-01-01,2018-01-31 23:38:00,174374,6145,1126
+shipping date (DateOrders),发货时间,2015-01-03,2018-02-06 22:14:00,172934,7585,1130

@@ -1,0 +1,121 @@
+﻿week,sku_id,sku_name,category,actual,ma4,ma8,sn,naive
+2017-07-03,116,Nike Men's Comfort 2 Slide,Tennis & Racquet,0.0,0.0,0.0,0.0,0.0
+2017-07-10,116,Nike Men's Comfort 2 Slide,Tennis & Racquet,0.0,0.0,0.0,15.0,0.0
+2017-07-17,116,Nike Men's Comfort 2 Slide,Tennis & Racquet,0.0,0.0,0.0,13.0,0.0
+2017-07-24,116,Nike Men's Comfort 2 Slide,Tennis & Racquet,0.0,0.0,0.0,8.0,0.0
+2017-07-31,116,Nike Men's Comfort 2 Slide,Tennis & Racquet,0.0,0.0,0.0,6.0,0.0
+2017-08-07,116,Nike Men's Comfort 2 Slide,Tennis & Racquet,0.0,0.0,0.0,5.0,0.0
+2017-08-14,116,Nike Men's Comfort 2 Slide,Tennis & Racquet,0.0,0.0,0.0,0.0,0.0
+2017-08-21,116,Nike Men's Comfort 2 Slide,Tennis & Racquet,0.0,0.0,0.0,6.0,0.0
+2017-08-28,116,Nike Men's Comfort 2 Slide,Tennis & Racquet,0.0,0.0,0.0,19.0,0.0
+2017-09-04,116,Nike Men's Comfort 2 Slide,Tennis & Racquet,0.0,0.0,0.0,6.0,0.0
+2017-09-11,116,Nike Men's Comfort 2 Slide,Tennis & Racquet,0.0,0.0,0.0,14.0,0.0
+2017-09-18,116,Nike Men's Comfort 2 Slide,Tennis & Racquet,0.0,0.0,0.0,7.0,0.0
+2017-07-03,191,Nike Men's Free 5.0+ Running Shoe,Cardio Equipment,238.0,220.5,220.0,280.0,243.0
+2017-07-10,191,Nike Men's Free 5.0+ Running Shoe,Cardio Equipment,232.0,234.25,221.375,238.0,238.0
+2017-07-17,191,Nike Men's Free 5.0+ Running Shoe,Cardio Equipment,291.0,248.0,223.5,243.0,232.0
+2017-07-24,191,Nike Men's Free 5.0+ Running Shoe,Cardio Equipment,279.0,251.0,232.0,238.0,291.0
+2017-07-31,191,Nike Men's Free 5.0+ Running Shoe,Cardio Equipment,233.0,260.0,240.25,268.0,279.0
+2017-08-07,191,Nike Men's Free 5.0+ Running Shoe,Cardio Equipment,250.0,258.75,246.5,248.0,233.0
+2017-08-14,191,Nike Men's Free 5.0+ Running Shoe,Cardio Equipment,251.0,263.25,255.625,232.0,250.0
+2017-08-21,191,Nike Men's Free 5.0+ Running Shoe,Cardio Equipment,247.0,253.25,252.125,228.0,251.0
+2017-08-28,191,Nike Men's Free 5.0+ Running Shoe,Cardio Equipment,272.0,245.25,252.625,278.0,247.0
+2017-09-04,191,Nike Men's Free 5.0+ Running Shoe,Cardio Equipment,289.0,255.0,256.875,219.0,272.0
+2017-09-11,191,Nike Men's Free 5.0+ Running Shoe,Cardio Equipment,223.0,264.75,264.0,240.0,289.0
+2017-09-18,191,Nike Men's Free 5.0+ Running Shoe,Cardio Equipment,281.0,257.75,255.5,231.0,223.0
+2017-07-03,365,Perfect Fitness Perfect Rip Deck,Cleats,551.0,433.0,434.125,524.0,493.0
+2017-07-10,365,Perfect Fitness Perfect Rip Deck,Cleats,524.0,477.25,453.125,557.0,551.0
+2017-07-17,365,Perfect Fitness Perfect Rip Deck,Cleats,506.0,518.25,462.875,490.0,524.0
+2017-07-24,365,Perfect Fitness Perfect Rip Deck,Cleats,508.0,518.5,468.875,466.0,506.0
+2017-07-31,365,Perfect Fitness Perfect Rip Deck,Cleats,474.0,522.25,477.625,494.0,508.0
+2017-08-07,365,Perfect Fitness Perfect Rip Deck,Cleats,516.0,503.0,490.125,542.0,474.0
+2017-08-14,365,Perfect Fitness Perfect Rip Deck,Cleats,485.0,501.0,509.625,517.0,516.0
+2017-08-21,365,Perfect Fitness Perfect Rip Deck,Cleats,547.0,495.75,507.125,530.0,485.0
+2017-08-28,365,Perfect Fitness Perfect Rip Deck,Cleats,590.0,505.5,513.875,463.0,547.0
+2017-09-04,365,Perfect Fitness Perfect Rip Deck,Cleats,491.0,534.5,518.75,513.0,590.0
+2017-09-11,365,Perfect Fitness Perfect Rip Deck,Cleats,491.0,528.25,514.625,493.0,491.0
+2017-09-18,365,Perfect Fitness Perfect Rip Deck,Cleats,446.0,529.75,512.75,505.0,491.0
+2017-07-03,403,Nike Men's CJ Elite 2 TD Football Cleat,Men's Footwear,166.0,140.0,146.5,152.0,130.0
+2017-07-10,403,Nike Men's CJ Elite 2 TD Football Cleat,Men's Footwear,154.0,149.0,146.875,159.0,166.0
+2017-07-17,403,Nike Men's CJ Elite 2 TD Football Cleat,Men's Footwear,162.0,155.0,149.0,138.0,154.0
+2017-07-24,403,Nike Men's CJ Elite 2 TD Football Cleat,Men's Footwear,147.0,153.0,152.625,172.0,162.0
+2017-07-31,403,Nike Men's CJ Elite 2 TD Football Cleat,Men's Footwear,167.0,157.25,148.625,140.0,147.0
+2017-08-07,403,Nike Men's CJ Elite 2 TD Football Cleat,Men's Footwear,165.0,157.5,153.25,153.0,167.0
+2017-08-14,403,Nike Men's CJ Elite 2 TD Football Cleat,Men's Footwear,153.0,160.25,157.625,176.0,165.0
+2017-08-21,403,Nike Men's CJ Elite 2 TD Football Cleat,Men's Footwear,156.0,158.0,155.5,178.0,153.0
+2017-08-28,403,Nike Men's CJ Elite 2 TD Football Cleat,Men's Footwear,133.0,160.25,158.75,156.0,156.0
+2017-09-04,403,Nike Men's CJ Elite 2 TD Football Cleat,Men's Footwear,149.0,151.75,154.625,155.0,133.0
+2017-09-11,403,Nike Men's CJ Elite 2 TD Football Cleat,Men's Footwear,177.0,147.75,154.0,161.0,149.0
+2017-09-18,403,Nike Men's CJ Elite 2 TD Football Cleat,Men's Footwear,145.0,153.75,155.875,143.0,177.0
+2017-07-03,502,Nike Men's Dri-FIT Victory Golf Polo,Women's Apparel,419.0,419.25,396.25,417.0,506.0
+2017-07-10,502,Nike Men's Dri-FIT Victory Golf Polo,Women's Apparel,378.0,436.5,401.25,441.0,419.0
+2017-07-17,502,Nike Men's Dri-FIT Victory Golf Polo,Women's Apparel,465.0,440.0,399.75,457.0,378.0
+2017-07-24,502,Nike Men's Dri-FIT Victory Golf Polo,Women's Apparel,383.0,442.0,420.125,494.0,465.0
+2017-07-31,502,Nike Men's Dri-FIT Victory Golf Polo,Women's Apparel,483.0,411.25,415.25,497.0,383.0
+2017-08-07,502,Nike Men's Dri-FIT Victory Golf Polo,Women's Apparel,423.0,427.25,431.875,503.0,483.0
+2017-08-14,502,Nike Men's Dri-FIT Victory Golf Polo,Women's Apparel,403.0,438.5,439.25,432.0,423.0
+2017-08-21,502,Nike Men's Dri-FIT Victory Golf Polo,Women's Apparel,470.0,423.0,432.5,422.0,403.0
+2017-08-28,502,Nike Men's Dri-FIT Victory Golf Polo,Women's Apparel,447.0,444.75,428.0,401.0,470.0
+2017-09-04,502,Nike Men's Dri-FIT Victory Golf Polo,Women's Apparel,452.0,435.75,431.5,386.0,447.0
+2017-09-11,502,Nike Men's Dri-FIT Victory Golf Polo,Women's Apparel,429.0,443.0,440.75,461.0,452.0
+2017-09-18,502,Nike Men's Dri-FIT Victory Golf Polo,Women's Apparel,461.0,449.5,436.25,452.0,429.0
+2017-07-03,627,Under Armour Girls' Toddler Spine Surge Runni,Shop By Sport,227.0,212.0,203.5,188.0,239.0
+2017-07-10,627,Under Armour Girls' Toddler Spine Surge Runni,Shop By Sport,195.0,217.5,205.0,220.0,227.0
+2017-07-17,627,Under Armour Girls' Toddler Spine Surge Runni,Shop By Sport,263.0,223.0,202.875,186.0,195.0
+2017-07-24,627,Under Armour Girls' Toddler Spine Surge Runni,Shop By Sport,249.0,231.0,213.625,183.0,263.0
+2017-07-31,627,Under Armour Girls' Toddler Spine Surge Runni,Shop By Sport,224.0,233.5,222.75,240.0,249.0
+2017-08-07,627,Under Armour Girls' Toddler Spine Surge Runni,Shop By Sport,200.0,232.75,225.125,248.0,224.0
+2017-08-14,627,Under Armour Girls' Toddler Spine Surge Runni,Shop By Sport,228.0,234.0,228.5,260.0,200.0
+2017-08-21,627,Under Armour Girls' Toddler Spine Surge Runni,Shop By Sport,188.0,225.25,228.125,201.0,228.0
+2017-08-28,627,Under Armour Girls' Toddler Spine Surge Runni,Shop By Sport,239.0,210.0,221.75,180.0,188.0
+2017-09-04,627,Under Armour Girls' Toddler Spine Surge Runni,Shop By Sport,233.0,213.75,223.25,218.0,239.0
+2017-09-11,627,Under Armour Girls' Toddler Spine Surge Runni,Shop By Sport,229.0,222.0,228.0,238.0,233.0
+2017-09-18,627,Under Armour Girls' Toddler Spine Surge Runni,Shop By Sport,226.0,222.25,223.75,255.0,229.0
+2017-07-03,957,Diamondback Women's Serene Classic Comfort Bi,Camping & Hiking,94.0,88.25,88.625,91.0,85.0
+2017-07-10,957,Diamondback Women's Serene Classic Comfort Bi,Camping & Hiking,96.0,92.75,87.25,94.0,94.0
+2017-07-17,957,Diamondback Women's Serene Classic Comfort Bi,Camping & Hiking,109.0,93.5,89.5,106.0,96.0
+2017-07-24,957,Diamondback Women's Serene Classic Comfort Bi,Camping & Hiking,90.0,96.0,93.875,91.0,109.0
+2017-07-31,957,Diamondback Women's Serene Classic Comfort Bi,Camping & Hiking,90.0,97.25,92.75,95.0,90.0
+2017-08-07,957,Diamondback Women's Serene Classic Comfort Bi,Camping & Hiking,89.0,96.25,94.5,91.0,90.0
+2017-08-14,957,Diamondback Women's Serene Classic Comfort Bi,Camping & Hiking,92.0,94.5,94.0,108.0,89.0
+2017-08-21,957,Diamondback Women's Serene Classic Comfort Bi,Camping & Hiking,90.0,90.25,93.125,74.0,92.0
+2017-08-28,957,Diamondback Women's Serene Classic Comfort Bi,Camping & Hiking,99.0,90.25,93.75,88.0,90.0
+2017-09-04,957,Diamondback Women's Serene Classic Comfort Bi,Camping & Hiking,98.0,92.5,94.375,86.0,99.0
+2017-09-11,957,Diamondback Women's Serene Classic Comfort Bi,Camping & Hiking,104.0,94.75,94.625,90.0,98.0
+2017-09-18,957,Diamondback Women's Serene Classic Comfort Bi,Camping & Hiking,97.0,97.75,94.0,94.0,104.0
+2017-07-03,1004,Field & Stream Sportsman 16 Gun Fire Safe,Fishing,124.0,119.75,110.75,118.0,130.0
+2017-07-10,1004,Field & Stream Sportsman 16 Gun Fire Safe,Fishing,108.0,126.0,113.0,115.0,124.0
+2017-07-17,1004,Field & Stream Sportsman 16 Gun Fire Safe,Fishing,119.0,124.75,114.5,126.0,108.0
+2017-07-24,1004,Field & Stream Sportsman 16 Gun Fire Safe,Fishing,129.0,120.25,116.5,110.0,119.0
+2017-07-31,1004,Field & Stream Sportsman 16 Gun Fire Safe,Fishing,111.0,120.0,119.875,122.0,129.0
+2017-08-07,1004,Field & Stream Sportsman 16 Gun Fire Safe,Fishing,130.0,116.75,121.375,103.0,111.0
+2017-08-14,1004,Field & Stream Sportsman 16 Gun Fire Safe,Fishing,128.0,122.25,123.5,126.0,130.0
+2017-08-21,1004,Field & Stream Sportsman 16 Gun Fire Safe,Fishing,142.0,124.5,122.375,128.0,128.0
+2017-08-28,1004,Field & Stream Sportsman 16 Gun Fire Safe,Fishing,104.0,127.75,123.875,107.0,142.0
+2017-09-04,1004,Field & Stream Sportsman 16 Gun Fire Safe,Fishing,114.0,126.0,121.375,100.0,104.0
+2017-09-11,1004,Field & Stream Sportsman 16 Gun Fire Safe,Fishing,143.0,122.0,122.125,129.0,114.0
+2017-09-18,1004,Field & Stream Sportsman 16 Gun Fire Safe,Fishing,140.0,125.75,125.125,105.0,143.0
+2017-07-03,1014,O'Brien Men's Neoprene Life Vest,Indoor/Outdoor Games,400.0,338.5,344.875,378.0,378.0
+2017-07-10,1014,O'Brien Men's Neoprene Life Vest,Indoor/Outdoor Games,409.0,359.25,352.125,439.0,400.0
+2017-07-17,1014,O'Brien Men's Neoprene Life Vest,Indoor/Outdoor Games,381.0,382.0,363.375,402.0,409.0
+2017-07-24,1014,O'Brien Men's Neoprene Life Vest,Indoor/Outdoor Games,364.0,392.0,365.25,385.0,381.0
+2017-07-31,1014,O'Brien Men's Neoprene Life Vest,Indoor/Outdoor Games,383.0,388.5,363.5,414.0,364.0
+2017-08-07,1014,O'Brien Men's Neoprene Life Vest,Indoor/Outdoor Games,378.0,384.25,371.75,310.0,383.0
+2017-08-14,1014,O'Brien Men's Neoprene Life Vest,Indoor/Outdoor Games,356.0,376.5,379.25,411.0,378.0
+2017-08-21,1014,O'Brien Men's Neoprene Life Vest,Indoor/Outdoor Games,393.0,370.25,381.125,318.0,356.0
+2017-08-28,1014,O'Brien Men's Neoprene Life Vest,Indoor/Outdoor Games,448.0,377.5,383.0,341.0,393.0
+2017-09-04,1014,O'Brien Men's Neoprene Life Vest,Indoor/Outdoor Games,301.0,393.75,389.0,333.0,448.0
+2017-09-11,1014,O'Brien Men's Neoprene Life Vest,Indoor/Outdoor Games,362.0,374.5,375.5,482.0,301.0
+2017-09-18,1014,O'Brien Men's Neoprene Life Vest,Indoor/Outdoor Games,407.0,376.0,373.125,355.0,362.0
+2017-07-03,1073,Pelican Sunstream 100 Kayak,Water Sports,124.0,102.25,100.25,122.0,121.0
+2017-07-10,1073,Pelican Sunstream 100 Kayak,Water Sports,110.0,109.5,104.125,107.0,124.0
+2017-07-17,1073,Pelican Sunstream 100 Kayak,Water Sports,112.0,116.25,105.125,114.0,110.0
+2017-07-24,1073,Pelican Sunstream 100 Kayak,Water Sports,74.0,116.75,108.125,115.0,112.0
+2017-07-31,1073,Pelican Sunstream 100 Kayak,Water Sports,118.0,105.0,103.625,95.0,74.0
+2017-08-07,1073,Pelican Sunstream 100 Kayak,Water Sports,124.0,103.5,106.5,90.0,118.0
+2017-08-14,1073,Pelican Sunstream 100 Kayak,Water Sports,109.0,107.0,111.625,111.0,124.0
+2017-08-21,1073,Pelican Sunstream 100 Kayak,Water Sports,125.0,106.25,111.5,115.0,109.0
+2017-08-28,1073,Pelican Sunstream 100 Kayak,Water Sports,96.0,119.0,112.0,98.0,125.0
+2017-09-04,1073,Pelican Sunstream 100 Kayak,Water Sports,125.0,113.5,108.5,100.0,96.0
+2017-09-11,1073,Pelican Sunstream 100 Kayak,Water Sports,101.0,113.75,110.375,114.0,125.0
+2017-09-18,1073,Pelican Sunstream 100 Kayak,Water Sports,104.0,111.75,109.0,98.0,101.0

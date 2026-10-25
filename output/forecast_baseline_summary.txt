@@ -1,0 +1,31 @@
+需求预测基线摘要（周 × Top10 SKU）
+================================================
+数据源：D:\mypro\zhilian-cankao\data\clean_main.parquet
+clean_main：165,646 行；质量过滤后：164,213 行
+完整周数：142；训练：130 周；验证：12 周
+训练窗口：2015-01-05 ~ 2017-07-02
+验证窗口：2017-07-03 ~ 2017-09-24
+SKU 数：10；预测模型：移动平均(4周), 移动平均(8周), 季节朴素(52周), 朴素(上周)
+
+对比表（MAE / WMAPE）：
+                                                  scope ma4_MAE ma4_WMAPE ma8_MAE ma8_WMAPE sn_MAE sn_WMAPE naive_MAE naive_WMAPE
+                                           Top10 合计（按周）   81.69     3.56%  110.33     4.81% 126.17    5.50%     94.50       4.12%
+                                         Top10 全部 SKU-周   19.71     8.59%   19.64     8.55%  25.47   11.09%     23.80      10.37%
+             SKU 365 · Perfect Fitness Perfect Rip Deck   47.08     9.22%   46.52     9.11%  35.25    6.90%     38.42       7.52%
+         SKU 502 · Nike Men's Dri-FIT Victory Golf Polo   28.77     6.62%   31.23     7.19%  42.33    9.74%     52.25      12.03%
+            SKU 1014 · O'Brien Men's Neoprene Life Vest   33.50     8.77%   32.68     8.56%  52.83   13.84%     38.92      10.19%
+            SKU 191 · Nike Men's Free 5.0+ Running Shoe   22.56     8.77%   23.47     9.13%  29.58   11.50%     26.33      10.24%
+SKU 627 · Under Armour Girls' Toddler Spine Surge Runni   20.00     8.89%   18.85     8.38%  35.67   15.85%     25.58      11.37%
+      SKU 403 · Nike Men's CJ Elite 2 TD Football Cleat   11.54     7.39%   12.15     7.78%  16.58   10.62%     17.25      11.05%
+   SKU 1004 · Field & Stream Sportsman 16 Gun Fire Safe   12.77    10.27%   11.66     9.38%  13.25   10.66%     14.67      11.80%
+                 SKU 1073 · Pelican Sunstream 100 Kayak   14.88    13.50%   13.79    12.52%  13.58   12.33%     18.58      16.87%
+SKU 957 · Diamondback Women's Serene Classic Comfort Bi    6.00     6.27%    6.01     6.28%   7.33    7.67%      6.00       6.27%
+                   SKU 116 · Nike Men's Comfort 2 Slide    0.00         —    0.00         —   8.25        —      0.00           —
+
+说明：
+- 每周以周一为起点；缺失周补 0。
+- MA4/MA8 使用验证周之前 4/8 周的真实需求均值。
+- 季节朴素使用 52 周前同周需求；历史不足时退化为 MA4。
+- WMAPE = sum(|实际-预测|) / sum(实际)，按对应 scope 汇总。
+- 若某个 scope 在验证期实际需求为 0（如 SKU 116），WMAPE 无定义，表中记为“—”。
+- 这是滚动一步预测；多步预测误差通常会更大。

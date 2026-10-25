@@ -1,0 +1,24 @@
+# 虚拟环境
+.venv/
+venv/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# 环境变量 / 密钥
+.env
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 数据与模型产物（体积大、可由脚本重新生成，不入库）
+data/
+models/
+
+# 图片产物（可由脚本重新生成；output/*.csv 要入库，前端页面靠它）
+output/*.png

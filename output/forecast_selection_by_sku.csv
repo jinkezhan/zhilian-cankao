@@ -1,0 +1,11 @@
+﻿sku_id,sku_name,weeks,selected_ma4_count,selected_ma8_count,selected_naive_count,selected_sn_count,selected_lgbm_count,selected_ensemble_count,select_MAE,select_WMAPE,oracle_best_model,oracle_best_MAE,oracle_best_WMAPE
+365,Perfect Fitness Perfect Rip Deck,12,1,0,2,9,0,0,50.4167,0.098711,sn,35.25,0.069016
+502,Nike Men's Dri-FIT Victory Golf Polo,12,7,1,0,2,2,0,45.7308,0.105269,ma4,28.7708,0.066229
+1014,O'Brien Men's Neoprene Life Vest,12,1,0,9,0,2,0,37.5183,0.098258,ensemble,32.1413,0.084176
+191,Nike Men's Free 5.0+ Running Shoe,12,8,0,4,0,0,0,27.8125,0.10815,ma4,22.5625,0.087735
+627,Under Armour Girls' Toddler Spine Surge Runni,12,8,3,1,0,0,0,21.8438,0.097047,ma8,18.8542,0.083765
+403,Nike Men's CJ Elite 2 TD Football Cleat,12,8,0,0,2,0,2,13.7321,0.087932,ma4,11.5417,0.073906
+1004,Field & Stream Sportsman 16 Gun Fire Safe,12,1,0,0,2,5,4,12.4477,0.100115,lgbm,11.0342,0.088747
+1073,Pelican Sunstream 100 Kayak,12,1,0,0,7,0,4,17.06,0.154856,ensemble,13.5573,0.123062
+957,Diamondback Women's Serene Classic Comfort Bi,12,1,0,0,6,1,4,5.7048,0.059632,lgbm,5.1436,0.053766
+116,Nike Men's Comfort 2 Slide,12,12,0,0,0,0,0,0.0,,—,,

@@ -1,0 +1,101 @@
+﻿rank,Product Card Id,Product Name,demand_qty,order_count,line_count
+1,365,Perfect Fitness Perfect Rip Deck,70273.0,19416,23373
+2,502,Nike Men's Dri-FIT Victory Golf Polo,60054.0,17056,20082
+3,1014,O'Brien Men's Neoprene Life Vest,55120.0,15851,18382
+4,191,Nike Men's Free 5.0+ Running Shoe,34989.0,10578,11606
+5,627,Under Armour Girls' Toddler Spine Surge Runni,30308.0,9381,10148
+6,403,Nike Men's CJ Elite 2 TD Football Cleat,21226.0,17909,21226
+7,1004,Field & Stream Sportsman 16 Gun Fire Safe,16594.0,14531,16594
+8,1073,Pelican Sunstream 100 Kayak,14815.0,13127,14815
+9,957,Diamondback Women's Serene Classic Comfort Bi,13121.0,11745,13121
+10,116,Nike Men's Comfort 2 Slide,954.0,314,315
+11,977,ENO Atlas Hammock Straps,951.0,307,309
+12,565,adidas Youth Germany Black/Red Away Match Soc,935.0,301,302
+13,885,Team Golf St. Louis Cardinals Putter Grip,916.0,300,300
+14,835,Bridgestone e6 Straight Distance NFL Carolina,901.0,299,299
+15,804,Glove It Women's Imperial Golf Glove,900.0,289,292
+16,44,adidas Men's F10 Messi TRX FG Soccer Cleat,897.0,289,291
+17,276,Under Armour Women's Ignite Slide,895.0,297,302
+18,926,Glove It Imperial Golf Towel,895.0,293,293
+19,728,LIJA Women's Eyelet Sleeveless Golf Polo,894.0,292,292
+20,917,Glove It Women's Mod Oval 3-Zip Carry All Gol,887.0,282,283
+21,905,Team Golf Texas Longhorns Putter Grip,883.0,291,292
+22,906,Team Golf Tennessee Volunteers Putter Grip,883.0,290,290
+23,564,Nike Men's Deutschland Weltmeister Winners Bl,873.0,284,285
+24,828,Bridgestone e6 Straight Distance NFL San Dieg,871.0,296,297
+25,797,Hirzl Women's Soffft Flex Golf Glove,867.0,286,289
+26,172,Nike Women's Tempo Shorts,864.0,302,302
+27,572,TYR Boys' Team Digi Jammer,861.0,291,293
+28,642,Columbia Men's PFG Anchor Tough T-Shirt,861.0,284,284
+29,823,Titleist Pro V1x High Numbers Personalized Go,859.0,289,290
+30,793,Hirzl Women's Hybrid Golf Glove,858.0,300,301
+31,775,Clicgear 8.0 Shoe Brush,853.0,271,272
+32,703,Top Flite Women's 2014 XL Hybrid,850.0,289,289
+33,924,Glove It Urban Brick Golf Towel,838.0,284,286
+34,893,Team Golf Pittsburgh Steelers Putter Grip,837.0,276,278
+35,135,Nike Dri-FIT Crew Sock 6 Pack,836.0,294,295
+36,792,Hirzl Men's Hybrid Golf Glove,830.0,270,270
+37,886,Team Golf San Francisco Giants Putter Grip,828.0,278,278
+38,818,Titleist Pro V1x Golf Balls,824.0,277,277
+39,249,Under Armour Women's Micro G Skulpt Running S,822.0,277,278
+40,821,Titleist Pro V1 High Numbers Personalized Gol,822.0,280,281
+41,771,Clicgear Rovic Cooler Bag,819.0,269,269
+42,778,Bag Boy Beverage Holder,814.0,266,267
+43,235,Under Armour Hustle Storm Medium Duffle Bag,814.0,285,287
+44,282,Under Armour Women's Ignite PIP VI Slide,804.0,268,268
+45,567,adidas Men's Germany Black Crest Away Tee,800.0,269,269
+46,897,Team Golf New England Patriots Putter Grip,786.0,270,270
+47,93,Under Armour Men's Tech II T-Shirt,780.0,261,261
+48,278,Under Armour Men's Compression EV SL Slide,778.0,267,268
+49,822,Titleist Pro V1x High Numbers Golf Balls,774.0,255,256
+50,825,Bridgestone e6 Straight Distance NFL Tennesse,771.0,243,244
+51,37,adidas Kids' F5 Messi FG Soccer Cleat,756.0,251,251
+52,134,Nike Women's Legend V-Neck T-Shirt,743.0,257,258
+53,273,Under Armour Kids' Mercenary Slide,743.0,235,235
+54,810,Glove It Women's Mod Oval Golf Glove,735.0,257,258
+55,724,LIJA Women's Mid-Length Panel Golf Shorts,226.0,72,72
+56,24,Elevation Training Mask 2.0,216.0,71,71
+57,359,Nike Men's Free TR 5.0 TB Training Shoe,204.0,67,67
+58,646,Merrell Women's Grassbow Sport Hiking Shoe,201.0,68,68
+59,258,Nike Women's Free 5.0 TR FIT PRT 4 Training S,201.0,69,69
+60,251,Brooks Women's Ghost 6 Running Shoe,199.0,61,61
+61,777,Bag Boy M330 Push Cart,193.0,63,63
+62,730,LIJA Women's Argyle Golf Polo,188.0,63,64
+63,306,Polar FT4 Heart Rate Monitor,186.0,57,57
+64,677,TaylorMade White Smoke IN-12 Putter,175.0,57,57
+65,981,The North Face Women's Recon Backpack,174.0,55,55
+66,78,Nike Kids' Grade School KD VI Basketball Shoe,173.0,57,58
+67,295,Fitbit The One Wireless Activity & Sleep Trac,171.0,58,58
+68,691,MDGolf Pittsburgh Penguins Putter,137.0,51,51
+69,666,Merrell Men's All Out Flash Trail Running Sho,81.0,81,81
+70,607,Garmin Approach S3 Golf GPS Watch,70.0,68,70
+71,705,Cleveland Golf Women's 588 RTX CB Satin Chrom,69.0,69,69
+72,725,LIJA Women's Button Golf Dress,69.0,69,69
+73,715,TaylorMade Women's RBZ SL Rescue,68.0,68,68
+74,647,Merrell Women's Siren Mid Waterproof Hiking B,66.0,65,66
+75,305,Mio ALPHA Heart Rate Monitor/Sport Watch,65.0,65,65
+76,671,Cleveland Golf Collegiate My Custom Wedge 588,63.0,63,63
+77,35,adidas Brazuca 2014 Official Match Ball,63.0,63,63
+78,786,TaylorMade 2014 Purelite Stand Bag,62.0,62,62
+79,19,Nike Men's Fingertrap Max Training Shoe,62.0,61,62
+80,216,Yakima DoubleDown Ace Hitch Mount 4-Bike Rack,60.0,60,60
+81,625,Nike Men's Kobe IX Elite Low Basketball Shoe,58.0,58,58
+82,652,Merrell Women's Grassbow Sport Waterproof Hik,57.0,57,57
+83,858,GolfBuddy VT3 GPS Watch,57.0,57,57
+84,743,Ogio Race Golf Shoes,56.0,56,56
+85,982,insta-bed Neverflat Air Mattress,55.0,54,55
+86,773,Titleist Small Wheeled Travel Cover,52.0,52,52
+87,311,Polar Loop Activity Tracker,51.0,50,51
+88,1059,Pelican Maverick 100X Kayak,40.0,40,40
+89,364,Total Gym 1400,36.0,35,36
+90,845,Garmin Approach S4 Golf GPS Watch,36.0,34,36
+91,303,Garmin Forerunner 910XT GPS Watch,35.0,35,35
+92,768,Titleist Club Glove Travel Cover,34.0,34,34
+93,203,GoPro HERO3+ Black Edition Camera,32.0,32,32
+94,58,Diamondback Boys' Insight 24 Performance Hybr,29.0,28,29
+95,61,Diamondback Girls' Clarity 24 Hybrid Bike 201,28.0,27,28
+96,127,Stiga Master Series ST3100 Competition Indoor,27.0,25,27
+97,226,Bowflex SelectTech 1090 Dumbbells,7.0,7,7
+98,208,SOLE E35 Elliptical,6.0,6,6
+99,860,Bushnell Pro X7 Jolt Slope Rangefinder,4.0,3,4
+100,60,SOLE E25 Elliptical,2.0,2,2

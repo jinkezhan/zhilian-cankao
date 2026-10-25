@@ -1,0 +1,48 @@
+LightGBM 需求预测摘要（周 × Top10 SKU）
+====================================================
+数据源：D:\mypro\zhilian-cankao\data\clean_main.parquet
+clean_main：165,646 行；质量过滤后：164,213 行
+完整周数：142；训练：130 周；验证：12 周
+训练窗口：2015-01-05 ~ 2017-07-02
+验证窗口：2017-07-03 ~ 2017-09-24
+初始训练样本：1,300 行；验证期逐周重训
+早停轮数：168 ~ 422（末次 213）
+参数：{'objective': 'regression_l1', 'metric': 'mae', 'learning_rate': 0.03, 'num_leaves': 15, 'min_data_in_leaf': 20, 'feature_fraction': 0.8, 'bagging_fraction': 0.9, 'bagging_freq': 1, 'lambda_l2': 1.0, 'verbosity': -1, 'seed': 42, 'num_threads': 1}
+
+对比表（MAE / WMAPE）：
+                                                  scope ma4_MAE ma4_WMAPE ma8_MAE ma8_WMAPE sn_MAE sn_WMAPE naive_MAE naive_WMAPE lgbm_MAE lgbm_WMAPE
+                                           Top10 合计（按周）   81.69     3.56%  110.33     4.81% 126.17    5.50%     94.50       4.12%    85.60      3.73%
+                                         Top10 全部 SKU-周   19.71     8.59%   19.64     8.55%  25.47   11.09%     23.80      10.37%    20.90      9.11%
+             SKU 365 · Perfect Fitness Perfect Rip Deck   47.08     9.22%   46.52     9.11%  35.25    6.90%     38.42       7.52%    45.62      8.93%
+         SKU 502 · Nike Men's Dri-FIT Victory Golf Polo   28.77     6.62%   31.23     7.19%  42.33    9.74%     52.25      12.03%    34.86      8.02%
+            SKU 1014 · O'Brien Men's Neoprene Life Vest   33.50     8.77%   32.68     8.56%  52.83   13.84%     38.92      10.19%    31.86      8.34%
+            SKU 191 · Nike Men's Free 5.0+ Running Shoe   22.56     8.77%   23.47     9.13%  29.58   11.50%     26.33      10.24%    28.86     11.22%
+SKU 627 · Under Armour Girls' Toddler Spine Surge Runni   20.00     8.89%   18.85     8.38%  35.67   15.85%     25.58      11.37%    22.50     10.00%
+      SKU 403 · Nike Men's CJ Elite 2 TD Football Cleat   11.54     7.39%   12.15     7.78%  16.58   10.62%     17.25      11.05%    13.16      8.43%
+   SKU 1004 · Field & Stream Sportsman 16 Gun Fire Safe   12.77    10.27%   11.66     9.38%  13.25   10.66%     14.67      11.80%    11.92      9.59%
+                 SKU 1073 · Pelican Sunstream 100 Kayak   14.88    13.50%   13.79    12.52%  13.58   12.33%     18.58      16.87%    13.57     12.32%
+SKU 957 · Diamondback Women's Serene Classic Comfort Bi    6.00     6.27%    6.01     6.28%   7.33    7.67%      6.00       6.27%     4.44      4.64%
+                   SKU 116 · Nike Men's Comfort 2 Slide    0.00         —    0.00         —   8.25        —      0.00           —     2.24          —
+
+Top10 全部 SKU-周最佳模型：移动平均(8周) (WMAPE=8.55%)
+
+特征重要性 Top 10（gain）：
+     feature         gain  split
+roll_mean_26 21376.931368    101
+  roll_max_4  9646.841710    135
+ roll_min_13  5247.812839     52
+  roll_max_8  5184.867091     76
+roll_mean_13  3906.861436     69
+ roll_mean_8  3647.125834    105
+ roll_mean_4  2971.000288    123
+     sku_cat  2265.317230     15
+       lag_1  1710.660663    126
+  roll_min_8  1661.000812     49
+
+说明：
+- 全局面板模型，10 个 SKU 一起训练，SKU/品类为类别特征。
+- 滞后与滚动特征均 shift(1)，验证周只使用此前真实值，避免泄漏。
+- 每个验证周滚动重训：只用该周之前的真实数据，训练集末 12 周早停。
+- 验证为一步预测；多步预测误差会更大。
+- 若某个 scope 在验证期实际需求为 0（如 SKU 116），WMAPE 无定义，表中记为“—”。
+- 2017-10 之后口径突变，未用于训练/验证。

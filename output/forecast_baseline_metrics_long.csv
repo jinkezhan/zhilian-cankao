@@ -1,0 +1,49 @@
+﻿model,model_label,level,scope,sku_id,sku_name,mae,wmape,actual_sum,n
+ma4,移动平均(4周),total,Top10 合计（按周）,,,81.6875,0.035585,27547.0,12
+ma8,移动平均(8周),total,Top10 合计（按周）,,,110.3333,0.048063,27547.0,12
+sn,季节朴素(52周),total,Top10 合计（按周）,,,126.1667,0.054961,27547.0,12
+naive,朴素(上周),total,Top10 合计（按周）,,,94.5,0.041166,27547.0,12
+ma4,移动平均(4周),overall,Top10 全部 SKU-周,,,19.7104,0.085862,27547.0,120
+ma8,移动平均(8周),overall,Top10 全部 SKU-周,,,19.6354,0.085536,27547.0,120
+sn,季节朴素(52周),overall,Top10 全部 SKU-周,,,25.4667,0.110938,27547.0,120
+naive,朴素(上周),overall,Top10 全部 SKU-周,,,23.8,0.103677,27547.0,120
+ma4,移动平均(4周),sku,SKU 116 · Nike Men's Comfort 2 Slide,116.0,Nike Men's Comfort 2 Slide,0.0,,0.0,12
+ma8,移动平均(8周),sku,SKU 116 · Nike Men's Comfort 2 Slide,116.0,Nike Men's Comfort 2 Slide,0.0,,0.0,12
+sn,季节朴素(52周),sku,SKU 116 · Nike Men's Comfort 2 Slide,116.0,Nike Men's Comfort 2 Slide,8.25,,0.0,12
+naive,朴素(上周),sku,SKU 116 · Nike Men's Comfort 2 Slide,116.0,Nike Men's Comfort 2 Slide,0.0,,0.0,12
+ma4,移动平均(4周),sku,SKU 191 · Nike Men's Free 5.0+ Running Shoe,191.0,Nike Men's Free 5.0+ Running Shoe,22.5625,0.087735,3086.0,12
+ma8,移动平均(8周),sku,SKU 191 · Nike Men's Free 5.0+ Running Shoe,191.0,Nike Men's Free 5.0+ Running Shoe,23.4688,0.091259,3086.0,12
+sn,季节朴素(52周),sku,SKU 191 · Nike Men's Free 5.0+ Running Shoe,191.0,Nike Men's Free 5.0+ Running Shoe,29.5833,0.115036,3086.0,12
+naive,朴素(上周),sku,SKU 191 · Nike Men's Free 5.0+ Running Shoe,191.0,Nike Men's Free 5.0+ Running Shoe,26.3333,0.102398,3086.0,12
+ma4,移动平均(4周),sku,SKU 365 · Perfect Fitness Perfect Rip Deck,365.0,Perfect Fitness Perfect Rip Deck,47.0833,0.092185,6129.0,12
+ma8,移动平均(8周),sku,SKU 365 · Perfect Fitness Perfect Rip Deck,365.0,Perfect Fitness Perfect Rip Deck,46.5208,0.091083,6129.0,12
+sn,季节朴素(52周),sku,SKU 365 · Perfect Fitness Perfect Rip Deck,365.0,Perfect Fitness Perfect Rip Deck,35.25,0.069016,6129.0,12
+naive,朴素(上周),sku,SKU 365 · Perfect Fitness Perfect Rip Deck,365.0,Perfect Fitness Perfect Rip Deck,38.4167,0.075216,6129.0,12
+ma4,移动平均(4周),sku,SKU 403 · Nike Men's CJ Elite 2 TD Football Cleat,403.0,Nike Men's CJ Elite 2 TD Football Cleat,11.5417,0.073906,1874.0,12
+ma8,移动平均(8周),sku,SKU 403 · Nike Men's CJ Elite 2 TD Football Cleat,403.0,Nike Men's CJ Elite 2 TD Football Cleat,12.1458,0.077775,1874.0,12
+sn,季节朴素(52周),sku,SKU 403 · Nike Men's CJ Elite 2 TD Football Cleat,403.0,Nike Men's CJ Elite 2 TD Football Cleat,16.5833,0.10619,1874.0,12
+naive,朴素(上周),sku,SKU 403 · Nike Men's CJ Elite 2 TD Football Cleat,403.0,Nike Men's CJ Elite 2 TD Football Cleat,17.25,0.110459,1874.0,12
+ma4,移动平均(4周),sku,SKU 502 · Nike Men's Dri-FIT Victory Golf Polo,502.0,Nike Men's Dri-FIT Victory Golf Polo,28.7708,0.066229,5213.0,12
+ma8,移动平均(8周),sku,SKU 502 · Nike Men's Dri-FIT Victory Golf Polo,502.0,Nike Men's Dri-FIT Victory Golf Polo,31.2292,0.071888,5213.0,12
+sn,季节朴素(52周),sku,SKU 502 · Nike Men's Dri-FIT Victory Golf Polo,502.0,Nike Men's Dri-FIT Victory Golf Polo,42.3333,0.097449,5213.0,12
+naive,朴素(上周),sku,SKU 502 · Nike Men's Dri-FIT Victory Golf Polo,502.0,Nike Men's Dri-FIT Victory Golf Polo,52.25,0.120276,5213.0,12
+ma4,移动平均(4周),sku,SKU 627 · Under Armour Girls' Toddler Spine Surge Runni,627.0,Under Armour Girls' Toddler Spine Surge Runni,20.0,0.088856,2701.0,12
+ma8,移动平均(8周),sku,SKU 627 · Under Armour Girls' Toddler Spine Surge Runni,627.0,Under Armour Girls' Toddler Spine Surge Runni,18.8542,0.083765,2701.0,12
+sn,季节朴素(52周),sku,SKU 627 · Under Armour Girls' Toddler Spine Surge Runni,627.0,Under Armour Girls' Toddler Spine Surge Runni,35.6667,0.15846,2701.0,12
+naive,朴素(上周),sku,SKU 627 · Under Armour Girls' Toddler Spine Surge Runni,627.0,Under Armour Girls' Toddler Spine Surge Runni,25.5833,0.113662,2701.0,12
+ma4,移动平均(4周),sku,SKU 957 · Diamondback Women's Serene Classic Comfort Bi,957.0,Diamondback Women's Serene Classic Comfort Bi,6.0,0.062718,1148.0,12
+ma8,移动平均(8周),sku,SKU 957 · Diamondback Women's Serene Classic Comfort Bi,957.0,Diamondback Women's Serene Classic Comfort Bi,6.0104,0.062827,1148.0,12
+sn,季节朴素(52周),sku,SKU 957 · Diamondback Women's Serene Classic Comfort Bi,957.0,Diamondback Women's Serene Classic Comfort Bi,7.3333,0.076655,1148.0,12
+naive,朴素(上周),sku,SKU 957 · Diamondback Women's Serene Classic Comfort Bi,957.0,Diamondback Women's Serene Classic Comfort Bi,6.0,0.062718,1148.0,12
+ma4,移动平均(4周),sku,SKU 1004 · Field & Stream Sportsman 16 Gun Fire Safe,1004.0,Field & Stream Sportsman 16 Gun Fire Safe,12.7708,0.102714,1492.0,12
+ma8,移动平均(8周),sku,SKU 1004 · Field & Stream Sportsman 16 Gun Fire Safe,1004.0,Field & Stream Sportsman 16 Gun Fire Safe,11.6562,0.09375,1492.0,12
+sn,季节朴素(52周),sku,SKU 1004 · Field & Stream Sportsman 16 Gun Fire Safe,1004.0,Field & Stream Sportsman 16 Gun Fire Safe,13.25,0.106568,1492.0,12
+naive,朴素(上周),sku,SKU 1004 · Field & Stream Sportsman 16 Gun Fire Safe,1004.0,Field & Stream Sportsman 16 Gun Fire Safe,14.6667,0.117962,1492.0,12
+ma4,移动平均(4周),sku,SKU 1014 · O'Brien Men's Neoprene Life Vest,1014.0,O'Brien Men's Neoprene Life Vest,33.5,0.087735,4582.0,12
+ma8,移动平均(8周),sku,SKU 1014 · O'Brien Men's Neoprene Life Vest,1014.0,O'Brien Men's Neoprene Life Vest,32.6771,0.085579,4582.0,12
+sn,季节朴素(52周),sku,SKU 1014 · O'Brien Men's Neoprene Life Vest,1014.0,O'Brien Men's Neoprene Life Vest,52.8333,0.138368,4582.0,12
+naive,朴素(上周),sku,SKU 1014 · O'Brien Men's Neoprene Life Vest,1014.0,O'Brien Men's Neoprene Life Vest,38.9167,0.101921,4582.0,12
+ma4,移动平均(4周),sku,SKU 1073 · Pelican Sunstream 100 Kayak,1073.0,Pelican Sunstream 100 Kayak,14.875,0.135023,1322.0,12
+ma8,移动平均(8周),sku,SKU 1073 · Pelican Sunstream 100 Kayak,1073.0,Pelican Sunstream 100 Kayak,13.7917,0.125189,1322.0,12
+sn,季节朴素(52周),sku,SKU 1073 · Pelican Sunstream 100 Kayak,1073.0,Pelican Sunstream 100 Kayak,13.5833,0.123298,1322.0,12
+naive,朴素(上周),sku,SKU 1073 · Pelican Sunstream 100 Kayak,1073.0,Pelican Sunstream 100 Kayak,18.5833,0.168684,1322.0,12

@@ -1,0 +1,10 @@
+# 智链参谋 —— 项目依赖（Python 3.14.8 / Windows / .venv 实测通过）
+# 重装环境：.venv\Scripts\python.exe -m pip install -r requirements.txt
+pandas==3.1.0
+numpy==2.5.4
+openpyxl==3.1.5
+pyarrow==26.0.0
+matplotlib==3.11.2
+scikit-learn==1.9.1
+lightgbm==4.7.0
+streamlit==1.66.1
