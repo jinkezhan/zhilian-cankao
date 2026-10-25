@@ -48,6 +48,15 @@ app/ui/
 
 重新运行模型脚本后，点击侧边栏「刷新数据」清除缓存即可看到新产物。
 
+## Agent 兜底回归测试
+
+```powershell
+C:\Users\15800\anaconda3\python.exe app/ui/tests/test_agent_fallback.py
+```
+
+测试会验证不存在的 SKU（如 99999）返回明确报错，且不会回退到补货清单；
+同时回归有效 SKU 和批量补货查询。
+
 ## 说明
 
 - 图表使用 Altair；它随 Streamlit 一起安装，**不需要额外安装 plotly**。
