@@ -2,7 +2,7 @@
 
 ## 1. Python 解释器：只用项目内的 .venv
 
-- **唯一允许的解释器**：`D:\mypro\zhilian-cankao\.venv\Scripts\python.exe`
+- **唯一允许的解释器**：`D:\mypro\zhilian-canmou\.venv\Scripts\python.exe`
 - **禁止**使用 `python`、`py`、`python3`、`pip` 等裸命令。本机 `python` 会解析到 `D:\msys2\mingw64\bin\python.exe`（MSYS2 版，平台标签 `mingw_x86_64_msvcrt_gnu`，装不了 PyPI 的 win_amd64 wheel），一旦用错就会建出畸形 venv。
 - **禁止**删除、重建、清空 `.venv`。环境已建好并验证通过，见下方版本清单。
 - 需要装新包时：`.venv\Scripts\python.exe -m pip install <包名> -i https://pypi.tuna.tsinghua.edu.cn/simple`

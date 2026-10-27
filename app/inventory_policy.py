@@ -14,7 +14,11 @@
     再订货点 ROP      = P50_LT + SS              （= P90_LT）
     目标水位 S        = P90_cum × (lead_time_weeks + review_period_weeks) / H
     建议订货量        = max(0, S - 可用库存)，向上取整到 pack_size，且不低于 MOQ
-    紧急度            = 可用库存 < ROP 且 < 0.5×SS → 紧急；可用库存 < ROP → 建议补货；否则正常
+紧急度（四档，按顺序判断，与建议订货量严格自洽）：
+    可用库存 < 0.5×ROP                 → 紧急
+    0.5×ROP ≤ 可用库存 < ROP           → 建议补货
+    ROP ≤ 可用库存 < 目标水位          → 计划补货
+    可用库存 ≥ 目标水位                → 正常（此时建议订货量必为 0）
 
 周转口径（单 SKU 量纲，避免 Top-N 合计 ÷ 单 SKU 库存的 10 倍误差）：
     平均单 SKU 已满足件数 = total_served / n_skus
@@ -159,11 +163,19 @@ def round_order(gap: float, moq: int, pack_size: int) -> int:
     return int(max(qty, min_qty))
 
 
-def urgency_level(available: float, rop: float, safety_stock: float) -> str:
-    if available < rop and available < 0.5 * safety_stock:
+def urgency_level(available: float, rop: float, target_level: float) -> str:
+    """四档紧急度，判断顺序：紧急 → 建议补货 → 计划补货 → 正常。
+
+    与建议订货量严格自洽：
+    - 前三档都满足 available < target_level，即 gap > 0，取整后订货量必 > 0；
+    - 正常档 available >= target_level，gap = 0，订货量必为 0。
+    """
+    if available < 0.5 * rop:
         return "紧急"
     if available < rop:
         return "建议补货"
+    if available < target_level:
+        return "计划补货"
     return "正常"
 
 
@@ -504,7 +516,7 @@ def build_replenishment_table(
         target_level = float(params["target_level"])
         gap = max(0.0, target_level - available)
         order_qty = round_order(gap, int(inv["moq"]), int(inv["pack_size"]))
-        urgency = urgency_level(available, rop, safety_stock)
+        urgency = urgency_level(available, rop, target_level)
         quantile_label = f"P{int(round(float(params['service_quantile']) * 100))}"
         reason = (
             f"{quantile_label} 提前期需求 {float(params['service_demand_lt']):.0f}，"
@@ -550,7 +562,16 @@ def build_replenishment_table(
                 "reason": reason,
             }
         )
-    return pd.DataFrame(rows)
+    table = pd.DataFrame(rows)
+    # 硬约束：非“正常”档必须有订货量，“正常”档订货量必须为 0。
+    inconsistent = (table["urgency"] != "正常") != (table["recommended_order_qty"] > 0)
+    if inconsistent.any():
+        bad = table.loc[inconsistent, ["sku_id", "urgency", "recommended_order_qty"]]
+        raise SystemExit(
+            "紧急度与建议订货量不一致（状态非正常但订货量为 0，或状态正常但订货量 >0）：\n"
+            + bad.to_string(index=False)
+        )
+    return table
 
 
 # ---------------------------------------------------------------------------
@@ -578,8 +599,9 @@ def print_manual_check(row: pd.Series, inv: dict, horizon: int) -> list[str]:
         f"{row['available_inventory']:.2f}) = {row['gap']:.2f}",
         f"  7) 建议订货量 = 向上取整到 pack={int(row['pack_size'])}、不低于 "
         f"MOQ={int(row['moq'])} → {int(row['recommended_order_qty'])}",
-        f"  8) 紧急度：可用库存 {row['available_inventory']:.2f} vs ROP "
-        f"{row['reorder_point']:.2f} vs 0.5×SS {0.5 * row['safety_stock']:.2f} → {row['urgency']}",
+        f"  8) 紧急度（按顺序判断）：可用库存 {row['available_inventory']:.2f} vs "
+        f"0.5×ROP {0.5 * row['reorder_point']:.2f} / ROP {row['reorder_point']:.2f} / "
+        f"目标水位 {row['target_level']:.2f} → {row['urgency']}",
         f"     漂移状态：{row['drift_status']}（{row['drift_detail']}）",
     ]
     return lines
@@ -862,6 +884,14 @@ def main() -> None:
         f.write("- 缺货按丢失销售处理，不补单；满足率 = 总满足件数 / 总需求件数。\n")
         f.write("- 提前期需求按未来 H 周累计分位数 × (lead_time/H) 折算；lead_time > H 时显式告警并标记外推。\n")
         f.write("- 安全库存 SS = P90_LT - P50_LT；ROP = P50_LT + SS；目标水位按 P90 覆盖 lead_time+review 折算。\n")
+        f.write(
+            "- 紧急度四档（按顺序判断，与建议订货量严格自洽）："
+            "可用库存 < 0.5×ROP → 紧急；"
+            "0.5×ROP ≤ 可用库存 < ROP → 建议补货；"
+            "ROP ≤ 可用库存 < 目标水位 → 计划补货；"
+            "可用库存 ≥ 目标水位 → 正常。"
+            "前三档 gap > 0，建议订货量按 MOQ/pack 取整后 > 0；正常档 gap = 0，建议订货量必为 0。\n"
+        )
         f.write("- 漂移监测只用 u+H<=t 的已实现起点；只对“实际持续高于预测”（低估）升级，目标分位从 P90 升到 P95。\n")
         f.write("- 三种策略共享同一初始库存（仿真起点前 4 周平均需求 × initial_inventory_weeks）、同一 MOQ/pack。\n")
         f.write("- 策略 A 按“补到 initial_inventory_weeks 周平均销量”实现（若按字面每周固定订 4 周销量，库存无界增长，不作为可比基准）。\n")

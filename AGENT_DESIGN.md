@@ -1,6 +1,6 @@
 # 第 5 步 · Agent 对话层设计说明
 
-> 状态：待确认。确认后再写 `app/agent.py`。
+> 状态：已确认并实现（2026-10-25）。实现文件：`app/agent.py`、`app/agent_test.py`；10 条测试 10/10 通过。
 > 范围：只做命令行 Agent（第 5 步）。不做 Streamlit（第 6 步），不引入 LangChain，不新增依赖。
 
 ---
@@ -154,7 +154,8 @@ SKU 存在但不在 Top-10：
 | `safety_stock` | float | 安全库存 SS（件） |
 | `reorder_point` | float | 再订货点 ROP（件） |
 | `target_level` | float | 目标水位（件） |
-| `urgency` | str | `紧急` / `建议补货` / `正常` |
+| `urgency` | str | 四档：`紧急` / `建议补货` / `计划补货` / `正常` |
+| 四档定义 | — | 可用 < 0.5×ROP → 紧急；0.5×ROP ≤ 可用 < ROP → 建议补货；ROP ≤ 可用 < 目标水位 → 计划补货；可用 ≥ 目标水位 → 正常（订货量必为 0） |
 | `drift_status` | str | `正常` / `需重估` |
 | `drift_detail` | str | 漂移监测明细 |
 | `lead_time_weeks` | int | 提前期（周） |
@@ -191,7 +192,7 @@ SKU 存在但不在 Top-10：
 | `sku_id` / `sku_name` | int / str | SKU |
 | `snapshot_week` | str | 快照周 |
 | `recommended_order_qty` | int | 建议订货量（件，已按 MOQ/pack 取整） |
-| `urgency` | str | 紧急度 |
+| `urgency` | str | 四档紧急度：紧急 / 建议补货 / 计划补货 / 正常 |
 | `gap` | float | 目标水位 - 可用库存 |
 | `available_inventory` | float | 可用库存 |
 | `reorder_point` | float | ROP |
@@ -204,16 +205,23 @@ SKU 存在但不在 Top-10：
 
 ---
 
-### 2.5 `list_risk_skus()`
+### 2.5 `list_risk_skus(include_planned=False)`
 
-**用途**：返回当前快照所有需要关注的 SKU。按已确认口径，**包含“建议补货”**。
+**用途**：返回当前快照需要关注的 SKU。默认返回「紧急 + 建议补货」，漂移单独标注；`include_planned=True` 时追加「计划补货」。
 
 **输入 JSON Schema**
 
 ```json
 {
   "type": "object",
-  "properties": {},
+  "properties": {
+    "include_planned": {
+      "type": "boolean",
+      "default": false,
+      "description": "是否把“计划补货”也纳入返回"
+    }
+  },
+  "required": [],
   "additionalProperties": false
 }
 ```
@@ -224,8 +232,11 @@ SKU 存在但不在 Top-10：
 |---|---|---|
 | `ok` | bool | 查询状态 |
 | `snapshot_week` | str | 快照周 |
-| `counts` | object | `{"紧急":0,"漂移":0,"建议补货":3,"total":3}` |
+| `include_planned` | bool | 本次是否包含计划补货 |
+| `counts` | object | 默认示例：`{"紧急":0,"建议补货":3,"计划补货":0,"漂移":0,"total":3}`；`include_planned=true` 时计划补货计入 |
 | `skus` | array | 风险 SKU 列表，见下 |
+| `excluded_planned_count` | int | 默认未纳入的计划补货数量 |
+| `hint` | str | 提示可用 `include_planned=True` 查看计划补货 |
 | `message` | str | 空表时的中文说明 |
 
 `skus[]` 每项：
@@ -233,7 +244,8 @@ SKU 存在但不在 Top-10：
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `sku_id` / `sku_name` | int / str | SKU |
-| `risk_type` | str | `紧急` / `漂移` / `建议补货` |
+| `risk_type` | str | 主标签：`紧急` / `建议补货` / `计划补货`；纯漂移行为 `漂移` |
+| `risk_types` | array | 并列标签，漂移可与主标签同时出现，如 `["建议补货","漂移"]` |
 | `urgency` | str | 原始紧急度 |
 | `drift_status` | str | 原始漂移状态 |
 | `recommended_order_qty` | int | 建议订货量 |
@@ -242,14 +254,18 @@ SKU 存在但不在 Top-10：
 
 **分类与排序规则**
 
-1. `urgency == "紧急"` → `risk_type="紧急"`
-2. 否则 `drift_status == "需重估"` → `risk_type="漂移"`
-3. 否则 `urgency == "建议补货"` → `risk_type="建议补货"`
-4. 其余（`正常` 且无漂移）不返回。
-5. 同一 SKU 只出现一次，优先级：紧急 > 漂移 > 建议补货。
-6. 排序：风险等级优先，同级按 `recommended_order_qty` 降序。
+1. 默认纳入：`urgency ∈ {紧急, 建议补货}`；`drift_status == "需重估"` 的 SKU 也纳入（漂移是独立风险）。
+2. `include_planned=True` 时追加：`urgency == "计划补货"`。
+3. 主标签 `risk_type` 优先级：紧急 > 建议补货 > 计划补货；只有漂移、库存状态正常时为 `漂移`。
+4. `risk_types` 是并列标签数组；漂移不覆盖主标签，二者可同时出现。
+5. `counts` 按本次返回集合统计；「漂移」单独计数，可与前三档重叠，`total` 为去重后的 SKU 数。
+6. 排序：风险等级优先（紧急 > 建议补货 > 计划补货），同级有漂移的排前，再按 `recommended_order_qty` 降序。
 
-**当前真实结果**：紧急 0、漂移 0、建议补货 3 → SKU 365（608 件）、502（523 件）、1073（190 件）。空表能力通过测试夹具单独验证。
+**当前真实结果**
+
+- 默认（`include_planned=False`）：紧急 0、建议补货 3 → SKU 365（608 件）、502（523 件）、1073（190 件）；`excluded_planned_count=7`。
+- `include_planned=True`：共 10 条 = 建议补货 3 + 计划补货 7（1014/1004/627/957/191/403/116）。
+- 空表能力通过测试夹具单独验证。
 
 ---
 
@@ -281,7 +297,7 @@ Timeout:
 
 ### 3.3 密钥读取
 
-- 默认读取 `D:\mypro\zhilian-cankao\.env`。
+- 默认读取 `D:\mypro\zhilian-canmou\.env`。
 - 只解析 `KEY=VALUE` 行，支持值两侧单/双引号，忽略 `#` 注释。
 - 优先级：进程环境变量 `DEEPSEEK_API_KEY` > `.env`。两者都无 → 中文提示并 `sys.exit(2)`。
 - 启动时打印 `[配置] 模型=deepseek-chat，密钥=已读取（已隐藏）`，不打印任何密钥片段。
@@ -292,7 +308,7 @@ Timeout:
 
 | 场景 | 输出 | 退出码 |
 |---|---|---|
-| 缺 `DEEPSEEK_API_KEY` | `未找到 DEEPSEEK_API_KEY。请在项目根目录 .env 写入 DEEPSEEK_API_KEY=sk-... 后重试。` | 2 |
+| 缺 `DEEPSEEK_API_KEY` | `未找到 DEEPSEEK_API_KEY（或格式不正确）。请在项目根目录 .env 写入 DEEPSEEK_API_KEY=<你的密钥> 后重试。` | 2 |
 | HTTP 401 | `DeepSeek 鉴权失败（401）：请检查 .env 中的 DEEPSEEK_API_KEY。` | 3 |
 | HTTP 402 | `DeepSeek 账户余额不足（402），请充值后重试。` | 3 |
 | HTTP 429 | `DeepSeek 请求过于频繁（429），请稍后重试。` | 3 |
@@ -309,7 +325,7 @@ Timeout:
 以下文本原样写入 `app/agent.py` 的 `SYSTEM_PROMPT`：
 
 ```text
-你是「智链参考」供应链补货助手，服务对象是中小制造企业的库存计划员。
+你是「智链参谋」供应链补货助手，服务对象是中小制造企业的库存计划员。
 
 【数据纪律】
 1. 你只能使用工具返回的数据回答。回答中出现的每一个数字（需求、库存、SS、ROP、目标水位、建议订货量、周数）都必须来自本轮或历史工具返回，不得估算、外推、四舍五入到与工具值不一致的数量级，也不得引用训练知识。
@@ -320,32 +336,44 @@ Timeout:
 4. 用中文回答，控制在 3~5 句。第一句先给结论（缺不缺、要不要补、补多少），后面给依据。
 5. 依据里至少说明：预测分位数（P50/P90/P95）、可用库存（现有+在途）、SS、ROP、目标水位中与结论相关的项。
 6. 数字必须带单位和时间口径，例如「未来 4 周累计需求 P90=2270.46 件」「可用库存 2231.00 件」。提到需求时明确周数。
-7. 如果工具给出 recommended_order_qty，结论中的订货量必须与之完全一致；不要自行加价、不要建议超过该值。
+7. 如果工具给出 recommended_order_qty，结论中的订货量必须与之完全一致；「计划补货」要说明这是周期性补货、不是缺货风险；「正常」时不得建议订货。
 
 【工具使用】
 8. 用户问某个 SKU 会不会缺货、要不要补、补多少：依次调用 get_forecast(sku_id, weeks=4)、get_inventory_status(sku_id)、recommend_replenishment(sku_id)，交叉核对后再回答。
-9. 用户问「哪些 SKU 要补 / 哪些货要补 / 有什么风险」等批量或模糊问题：先调用 list_risk_skus()，再按返回结果回答。不要凭印象列举。
+9. 用户问「哪些 SKU 要补 / 哪些货要补 / 有什么风险」等批量或模糊问题：先调用 list_risk_skus()（默认返回紧急 + 建议补货）。用户明确问「计划补货 / 周期性补货 / 全部要补的」时，调用 list_risk_skus(include_planned=True)。不要凭印象列举。
 10. 用户只问库存、SS、ROP、目标水位：调用 get_inventory_status。只问建议订货量：调用 recommend_replenishment。只问未来需求：调用 get_forecast。
 11. 追问「那第二个呢」「它呢」：沿用上一轮的业务意图，把指代解析成上一轮回答里对应顺序的 SKU，再调用同样的工具组合。无法确定指代时，先问用户指的是哪个 SKU。
 
 【异常】
-12. 工具返回 found=false 且 reason="unknown_sku"：必须明确回答「数据里没有这个 SKU」，并列出 available_skus（最多 10 个）或建议用户改用清单中的 SKU。绝对禁止把上一轮查询结果、补货建议清单或其他 SKU 的数据当作本次回答；不要编造该 SKU 的任何数字。
+12. 工具返回 found=false 且 reason="unknown_sku"：明确回答「数据里没有这个 SKU」，并列出 available_skus（最多 10 个）或建议用户改用清单中的 SKU。不要编造该 SKU 的任何数字。
 13. 工具返回 found=false 且 reason="not_in_scope"：说明该 SKU 存在，但当前补货分析只覆盖 Top-10，无法给出预测/库存建议，并列出可用 SKU。
 14. get_forecast 返回 horizon_matched=false：明确说「预测只覆盖未来 4 周，无法回答 N 周累计」，不要用 4 周数值代替 N 周，也不要按比例外推。
-15. list_risk_skus 返回空列表：明确说「当前快照没有紧急、漂移或建议补货的 SKU」，不要编造。
+15. list_risk_skus 返回空列表：明确说「当前快照没有紧急、建议补货或计划补货的 SKU」，不要编造。
 16. 工具报错时，用一句中文说明哪项数据暂时取不到，并建议稍后重试；不要伪造数据。
 17. 如果用户的问题与供应链补货无关，用一句中文说明你只负责补货与库存问题。
 
-【未找到数据的强制兜底（最高优先级）】
-- 任何工具返回 found=false、空列表或错误时，必须如实说明未找到/无数据，并给出 available_skus 或下一步建议。
-- 绝对禁止复用上一轮查询结果、补货建议清单或其他 SKU 的数据来凑答案。
-- 绝对禁止返回其他无关的补货数据来凑数。
-
 【口径】
 18. 快照周是 2017-08-21；预测跨度 4 周；提前期 4 周；服务水平 P90。
-19. 「紧急」= 可用库存 < ROP 且 < 0.5×SS；「建议补货」= 可用库存 < ROP；「漂移」= drift_status 为「需重估」。
+19. 紧急度四档（按顺序判断）：可用库存 < 0.5×ROP → 紧急；0.5×ROP ≤ 可用库存 < ROP → 建议补货；ROP ≤ 可用库存 < 目标水位 → 计划补货；可用库存 ≥ 目标水位 → 正常（订货量必为 0）。漂移是独立标注，可与任一档并列。
 20. 回答中不要输出 JSON、工具名或调用参数；工具调用由系统单独打印。
 ```
+
+---
+
+## 4A. 生鲜前置仓 Agent（当前主线）
+
+运行时提示词位于 `app/freshretail_agent/tools_freshretail.py` 的 `FRESH_SYSTEM_PROMPT`，
+由 dashboard 的「生鲜前置仓（默认）」分支启用；上方制造企业提示词保留给 DataCo 保底分支。
+
+关键变更：
+
+- **身份**：生鲜前置仓补货店长助理，服务对象是前置仓店长和库存计划员。
+- **单位**：页面与回答统一使用展示口径 `kg/份`；底层为 FreshRetailNet 归一化销量指数。
+- **商品**：统一写 `SKU {store_id}-{product_id}`，禁止编造品类名称。
+- **预测**：未来 7 天日销 P50/P90，明确“P90 已含缺货风险冗余”。
+- **临期**：必须提示 `expiring_qty > 0` 的序列并建议优先促销。
+- **补货**：建议订货量必须与工具返回的 `suggest_qty` 一致，并给出效期上限与 cap_reason。
+- **异常**：未知/超出范围的序列必须如实说明，并列出可查询序列；禁止用其他序列的数据凑答案。
 
 ---
 
@@ -376,12 +404,13 @@ Timeout:
 
 ```text
 你> SKU 365 下个月会不会缺货？现在该补多少？
-[工具 1/3] get_forecast({"sku_id": 365, "weeks": 4})
+[工具调用 1] get_forecast({"sku_id": 365, "weeks": 4})
            -> P50=2056.34, P90=2270.46, P95=2409.40 件（未来 4 周累计）
-[工具 2/3] get_inventory_status({"sku_id": 365})
-           -> 可用 2231.00（现有 1141.00 + 在途 1090.00），SS=214.12，ROP=2270.46，目标 2838.08
-[工具 3/3] recommend_replenishment({"sku_id": 365})
+[工具调用 2] get_inventory_status({"sku_id": 365})
+           -> 可用 2231.00（现有 1141.00 + 在途 1090.00），SS=214.12，ROP=2270.46，目标=2838.08，紧急度=建议补货
+[工具调用 3] recommend_replenishment({"sku_id": 365})
            -> 建议订货 608 件，紧急度=建议补货，漂移=正常
+[本轮工具调用] 共 3 次
 助手> ...
 ```
 
@@ -404,12 +433,13 @@ SKU 365 下个月会不会缺货？现在该补多少？
 **工具调用（3 个，顺序固定）**
 
 ```text
-[工具 1/3] get_forecast({"sku_id": 365, "weeks": 4})
+[工具调用 1] get_forecast({"sku_id": 365, "weeks": 4})
            -> P50=2056.34, P90=2270.46, P95=2409.40 件（未来 4 周累计）
-[工具 2/3] get_inventory_status({"sku_id": 365})
-           -> 可用 2231.00（现有 1141.00 + 在途 1090.00），SS=214.12，ROP=2270.46，目标 2838.08
-[工具 3/3] recommend_replenishment({"sku_id": 365})
+[工具调用 2] get_inventory_status({"sku_id": 365})
+           -> 可用 2231.00（现有 1141.00 + 在途 1090.00），SS=214.12，ROP=2270.46，目标=2838.08，紧急度=建议补货
+[工具调用 3] recommend_replenishment({"sku_id": 365})
            -> 建议订货 608 件，紧急度=建议补货，漂移=正常
+[本轮工具调用] 共 3 次
 ```
 
 **预期回答**
@@ -431,13 +461,14 @@ SKU 365 下个月会不会缺货？现在该补多少？
 **工具调用（1 个）**
 
 ```text
-[工具 1/1] list_risk_skus({})
-           -> 紧急 0、漂移 0、建议补货 3：365(608)、502(523)、1073(190)
+[工具调用 1] list_risk_skus({})
+           -> 紧急 0、建议补货 3、计划补货 0、漂移 0：365(608)、502(523)、1073(190)
+              （另有 7 个计划补货未展开）
 ```
 
 **预期回答**
 
-> 当前快照没有“紧急”或“漂移”的 SKU，但有 3 个“建议补货”：SKU 365 建议补 608 件、SKU 502 建议补 523 件、SKU 1073 建议补 190 件。三者的可用库存都低于各自 ROP（365：2231.00 < 2270.46；502：2032.00 < 2043.62；1073：564.00 < 602.98）。如果需要，我可以逐个展开 P90 需求和 SS。
+> 当前快照没有“紧急”或“漂移”的 SKU，但有 3 个“建议补货”：SKU 365 建议补 608 件、SKU 502 建议补 523 件、SKU 1073 建议补 190 件。三者的可用库存都低于各自 ROP（365：2231.00 < 2270.46；502：2032.00 < 2043.62；1073：564.00 < 602.98）。另有 7 个“计划补货”SKU，属于周期性补货、不着急；需要的话我可以一并展开。
 
 **核对**：三个订货量与 `inventory_replenishment.csv` 的 `recommended_order_qty` 一致；ROP 取 2 位小数。
 
@@ -454,8 +485,8 @@ SKU 9999 呢？
 **工具调用（1 个，命中 unknown_sku 后停止）**
 
 ```text
-[工具 1/1] get_inventory_status({"sku_id": 9999})
-           -> found=false, reason=unknown_sku
+[工具调用 1] get_inventory_status({"sku_id": 9999})
+           -> 未找到：数据里没有这个 SKU
 ```
 
 **预期回答**
@@ -474,8 +505,9 @@ SKU 9999 呢？
 | “SKU 502 现在该补多少？” | `recommend_replenishment(502)`；需要依据时补 `get_inventory_status(502)` | 只问量，先查建议表 |
 | “SKU 365 的 ROP / SS / 目标水位是多少？” | `get_inventory_status(365)` | 只查库存参数 |
 | “SKU 365 未来 4 周要多少货？” | `get_forecast(365,4)` | 只查需求 |
-| “哪些 SKU 需要马上补货？” / “哪些货要补？” | `list_risk_skus()` | 批量/模糊问题先列清单 |
-| “有什么风险 SKU？” / “有漂移吗？” | `list_risk_skus()` | 漂移状态由工具统一返回 |
+| “哪些 SKU 需要马上补货？” / “哪些货要补？” | `list_risk_skus()` | 默认返回紧急 + 建议补货 |
+| “哪些是计划补货？” / “全部要补的 SKU 有哪些？” | `list_risk_skus(include_planned=True)` | 追加计划补货；当前共 10 条 |
+| “有什么风险 SKU？” / “有漂移吗？” | `list_risk_skus()` | 漂移作为独立标签返回 |
 | “SKU 9999 呢？” | `get_inventory_status(9999)`；若需要需求再 `get_forecast(9999,4)` | 命中 unknown_sku 后直接拒绝，不再查其他工具 |
 | “SKU 977 呢？”（非 Top-10 但存在） | `get_inventory_status(977)` | 命中 not_in_scope；说明只覆盖 Top-10 |
 | “SKU 365 未来 8 周累计需求？” | `get_forecast(365,8)` | 返回 horizon_matched=false，明确拒绝外推 |
@@ -491,7 +523,8 @@ SKU 9999 呢？
 | SKU 不存在（9999） | `found=false, reason=unknown_sku` + 可用清单 | 说“数据里没有这个 SKU”，列清单，不编数字 |
 | SKU 存在但非 Top-10（977） | `found=false, reason=not_in_scope` | 说明“存在但当前只覆盖 Top-10”，列清单 |
 | 预测周数 ≠ 4 | `horizon_matched=false`，不返回分位数 | 说明只覆盖 4 周，拒绝外推 |
-| 风险清单为空 | `counts.total=0, skus=[]`，`message` 说明 | 说“当前没有需要补货的 SKU”，不编造 |
+| 默认风险清单为空 | `counts.total=0, skus=[]`，`message` 说明 | 说“当前没有紧急或建议补货的 SKU”，不编造 |
+| 计划补货未展开 | 默认返回 `excluded_planned_count` 与 `hint` | 可提示“另有 N 个计划补货”；用户要细节时改用 `include_planned=True` |
 | 追问“第二个” | 正常工具调用 | 从上一轮列表取第 2 个 SKU；指代不明时反问 |
 | 缺少预测/库存 CSV | `ok=false, error=...` | 一句中文说明数据暂不可用 |
 | 模型返回未知工具名 | 回填 `{"ok":false,"error":"未知工具"}` | 模型自行修正或结束 |
@@ -504,13 +537,13 @@ SKU 9999 呢？
 
 测试脚本：`app/agent_test.py`，复用 `agent.py` 的 `run_turn()`，输出 `output/agent_test_cases.csv`。
 
-CSV 列：`case_id, 类别, 问题, 期望, 实际回答, 工具调用, 是否通过, 备注`
+CSV 列：`序号, 类别, 问题, 期望, 实际回答, 工具调用, 是否通过, 备注`
 
 | # | 类别 | 问题 | 期望 | 自动判定 |
 |---|---|---|---|---|
 | 1 | 正常缺货 | SKU 365 下个月会不会缺货？现在该补多少？ | 调用 3 个工具；结论“建议补 608 件”；含 P90=2270.46、可用 2231.00、ROP=2270.46 | 含“608”且含“2270.46”且工具数=3 |
 | 2 | 正常补量 | SKU 502 现在该补多少？ | 建议订货 523 件 | 含“523” |
-| 3 | 批量 | 哪些 SKU 需要马上补货？ | 调 `list_risk_skus`；列出 365/502/1073 及 608/523/190 | 含 3 个 SKU 与 3 个数量 |
+| 3 | 批量 | 哪些 SKU 需要马上补货？ | 调 `list_risk_skus`；默认 3 条：365/502/1073 及 608/523/190；可提示另有 7 个计划补货 | 含 3 个 SKU 与 3 个数量 |
 | 4 | 不存在 | SKU 9999 呢？ | 明确“数据里没有这个 SKU”；不出现编造数字 | 含“数据里没有”且不含“9999”之外的虚构数量 |
 | 5 | 模糊 | 哪些货要补？ | 调 `list_risk_skus`，不凭印象回答 | 工具调用含 `list_risk_skus` |
 | 6 | 非 Top-10 | SKU 977 现在该补多少？ | 说明存在但不在 Top-10，无法给建议 | 含“Top-10”或“不在”且工具 `reason=not_in_scope` |
@@ -526,7 +559,7 @@ CSV 列：`case_id, 类别, 问题, 期望, 实际回答, 工具调用, 是否�
 
 允许的口径：回答保留 2 位小数；订货量为整数。若模型把 2270.46 说成“约 2270”，记为“口语取整”，在 CSV 备注中注明；不视为数字错误，但抽检要求至少 3 条回答的原始数字与 CSV 完全一致。
 
-**执行前提**：`.env` 中需有有效的 `DEEPSEEK_API_KEY`。当前项目根目录尚无 `.env`；第 8 条可以立即跑，第 1–7、9–10 条需密钥到位后执行。缺 key 时测试脚本会把依赖 API 的用例标记为“未执行（缺 key）”，不会伪装成通过。
+**执行状态（2026-10-25）**：本地 `.env` 已配置有效 `DEEPSEEK_API_KEY`，`app/agent_test.py` 已真实执行全部 10 条，**10/10 通过**，记录写入 `output/agent_test_cases.csv`。第 8 条单独验证了缺 key 场景：中文提示、退出码 2、无 traceback。所有回答均来自实际模型调用，未伪造。
 
 ---
 
@@ -538,16 +571,18 @@ CSV 列：`case_id, 类别, 问题, 期望, 实际回答, 工具调用, 是否�
 | 抽查 3 条回答数字与 CSV 完全一致 | 测试脚本自动抽取 + 第 6 节示例已按 CSV 核对 |
 | 不存在的 SKU 不编造，明确说“数据里没有” | 系统提示词第 12 条 + `unknown_sku` 返回 + 测试 #4 |
 | 代码 grep 不到明文 API key | 只从 `.env`/环境变量读取；提交前执行 `rg -n "sk-[A-Za-z0-9]{10,}" app\`，应为 0 命中 |
-| 每轮回答打印工具名与参数 | `[工具 i/n] name({...})` 固定格式，见 5.2 |
-| 不做 Streamlit / 不引入 LangChain | 只新增 `app/agent.py`、`app/agent_test.py`；仅用标准库 + `requests` + `pandas` |
+| 每轮回答打印工具名与参数 | `[工具调用 i] name({...})` 固定格式，见 5.2 |
+| 不做 Streamlit / 不引入 LangChain | 新增 `app/agent.py`、`app/agent_test.py`；仅用标准库 + `requests` + `pandas` |
 
 ---
 
-## 11. 需要你确认的点
+## 11. 确认记录（2026-10-25）
 
-1. 以上 4 个工具的字段与返回结构是否 OK？
-2. 系统提示词全文是否 OK？
-3. `get_forecast` 只支持 `weeks=4`、其他周数明确拒绝，是否接受？
-4. 测试 #6 用 SKU 977（真实存在、排名第 11）作为“没进 Top-10”的样例，是否 OK？
+1. 4 个工具的字段与返回结构：确认，按本文实现。
+2. 系统提示词：确认；项目名统一为「智链参谋」，第 18/19 条同步四档口径。
+3. `get_forecast` 只支持 `weeks=4`、其他周数明确拒绝：确认。诚实拒绝优于按比例外推。
+4. 测试 #6 用 SKU 977（ENO Atlas Hammock Straps，需求排名第 11）：确认。
+5. `list_risk_skus`：默认紧急 + 建议补货；`include_planned=True` 追加计划补货；漂移单独标注、可与主标签并列。
+6. 缺 key 时只执行第 8 条，其余标记“未执行（缺 key）”，不伪造回答或数字；补 key 后跑全量。本次执行时 `.env` 已配置有效密钥，因此 10 条全部真实执行并通过。
 
-确认后我再写 `app/agent.py` 和 `app/agent_test.py`，并按第 9 节跑测试。
+实现与测试均已完成：10 条测试 10/10 通过，完整记录见 `output/agent_test_cases.csv`。

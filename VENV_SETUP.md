@@ -15,10 +15,10 @@ python --version
 
 ## 一、创建虚拟环境
 
-在项目根目录（`zhilian-cankao/`）下执行：
+在项目根目录（`zhilian-canmou/`）下执行：
 
 ```powershell
-cd D:\mypro\zhilian-cankao
+cd D:\mypro\zhilian-canmou
 python -m venv .venv
 ```
 

@@ -1,0 +1,137 @@
+# ============================================================================
+# 生鲜效期库存仿真参数（转型第三步）
+#
+# 修改本文件后重跑（不要改代码）：
+#   .venv\Scripts\python.exe app\freshretail_inventory.py
+#
+# 正式业务参数表由队友 1 在 2026-10-30 提供；到位后只改本文件再跑一遍。
+# 单位说明：FreshRetailNet 的 sale_amount / y_actual 是官方归一化销量指数，
+# 不是人民币金额。成本统一按“归一化单位成本”计，只用于策略间相对比较。
+# ============================================================================
+
+simulation:
+  # 仿真窗口必须与需求预测交付表的 eval 窗口一致，避免混入训练段
+  start_date: "2024-06-26"
+  # 窗口末日；也是补货快照所在日（次日 07-03 的订货建议）
+  end_date: "2024-07-02"
+  # 补货快照时点：取该日“营业前”状态（已到货、尚未开始当日销售）
+  snapshot_date: "2024-07-02"
+
+demand:
+  # 历史销量面板：200 条“店×SKU”序列，2024-03-28 ~ 2024-06-25 为训练段
+  history_path: "data/freshretail/clean_daily.parquet"
+  # 预测交付表：y_actual / y_pred_p50 / y_pred_p90 的列契约见需求预测 README
+  forecast_path: "output/freshretail_forecast_predictions.csv"
+  # 历史销量列（用于策略 A 的 MA7 与策略 B 的 σ14）
+  history_sales_col: "sale_amount"
+  # 三级品类列：仅用于报告里的最差序列诊断，不参与策略决策
+  category_col: "third_category_id"
+  # 当日真实需求：用预测交付表的观测销量；它是被缺货截断的观测值（见报告局限）
+  demand_col: "y_actual"
+  # 需求分位数预测列
+  p50_col: "y_pred_p50"
+  p90_col: "y_pred_p90"
+  # 日期列与序列主键
+  date_col: "dt"
+  series_keys: ["store_id", "product_id"]
+  # 预测模块指标文件：报告引用 P50/P90 实测覆盖率，避免在代码里硬编码
+  metrics_path: "output/freshretail_forecast_metrics.csv"
+  coverage_model: "lgbm_a"
+  coverage_scope: "全部"
+
+shelf_life:
+  # 三档保质期敏感性：短保 / 中标 / 长保。品类名称已脱敏，无法逐品类赋值，
+  # 因此三档各跑一遍，结论必须回答“最优策略是否稳定”。
+  options_days: [3, 5, 7]
+  # 补货快照使用的基准档（中标）；三档敏感性结果放在对比表与逐日状态表
+  base_days: 5
+
+replenishment:
+  # 前置仓日配：当日日终下单，次日营业前到货；提前期 L=1 天
+  lead_time_days: 1
+  # 每日盘点一次（周期检查）
+  review_period_days: 1
+  # 目标服务水平；代码用正态分位数反函数换算 z，不在代码里硬编码 z
+  service_level: 0.90
+  # 目标水位 = P50 的 (lead_time + target_cover_days) 日累计；
+  # 预测表只有 7 天，窗口内按可用天数截断（报告局限中说明）
+  target_cover_days: 7
+  # 效期约束：到货后总库存不超过“保质期内预计可售量 × 该倍数”。
+  # 本轮扫描 0.70~1.10 后，各档规则选中 {3: 1.0, 5: 0.9, 7: 1.0}，众数为 1.0，
+  # 故默认取 1.0（规则见报告第 6 节；auto_select=true 时以扫描结果为准）。
+  expiry_cap_multiplier: 1.0
+  # 是否用扫描规则自动覆盖上面的值（true = 以扫描结果为准，便于复算）
+  auto_select_cap_multiplier: true
+  # 效期倍数扫描候选（仅策略 C），用于“报损—满足率—总成本”权衡
+  cap_sweep_multipliers: [0.70, 0.80, 0.90, 1.00, 1.10]
+  # 剩余保质期 ≤ 该天数记为临期（可售但高风险）
+  expiring_threshold_days: 1
+  # 最小订货量（件）
+  min_order_qty: 1
+  # 订货包装倍数（件），缺口向上取整
+  order_pack_size: 1
+
+history_windows:
+  # 策略 A：近 N 天实际销量的算术平均
+  ma_days: 7
+  # 策略 A：订货目标 = MA × 该倍数
+  ma_multiplier: 1.2
+  # 策略 B：近 N 天实际销量的标准差
+  sigma_days: 14
+  # 样本标准差自由度（pandas 默认 ddof=1）
+  sigma_ddof: 1
+
+costs:
+  # 归一化单位成本；报损 1 件 = 损失 1 个归一化金额单位
+  unit_cost_normalized: 1.0
+  # 缺货惩罚（归一化金额倍数/件）；正式参数表到位后替换
+  stockout_penalty_per_unit: 5.0
+  # 报损成本率：报废即全损
+  spoilage_cost_rate: 1.0
+  # 日持有成本率：日终库存 × 单位成本 × 该比例
+  holding_cost_rate_per_day: 0.02
+  # 缺货惩罚敏感性（问题 4.3）：基准值与高压值各跑一遍
+  penalty_sensitivity: [5.0, 20.0]
+
+initial_inventory:
+  # 初始库存覆盖天数（按预测 P50 需求）
+  cover_days: 2
+  # 初始库存依据：p50_forecast = 预测表前 cover_days 天 P50 之和
+  basis: "p50_forecast"
+  # 初始批次年龄（天）：0 = 仿真首日刚到货，剩余保质期等于完整档位
+  age_days: 0
+
+urgency:
+  # 紧急档阈值：on_hand < 该比例 × ROP_P90
+  urgent_rop_ratio: 0.5
+
+validation:
+  # 期望序列数与窗口天数，用于启动自检（不满足直接报错）
+  expected_series: 200
+  expected_days: 7
+  # P90 分位线不得低于 P50（预测交付表的硬约束）
+  require_p90_ge_p50: true
+
+acceptance:
+  # 验收线：策略 C 在短保下报损率相对策略 B（传统 ROP）的最低降幅
+  spoilage_reduction_vs_b_min: 0.25
+  # 验收线/选值规则：策略 C 满足率相对策略 B 允许的最大落后（百分点）
+  fill_gap_vs_b_max_pp: 2.0
+  # 验收线：策略 C 满足率相对策略 A 的最低领先（百分点）
+  fill_over_a_min_pp: 2.0
+  # 报告“最差序列诊断”展示的条数
+  report_top_n_worst: 5
+
+outputs:
+  # 补货快照：每序列一行（基准保质期）
+  replenishment: "output/freshretail_inventory_replenishment.csv"
+  # 三策略 × 三保质期对比：9 行
+  comparison: "output/freshretail_inventory_policy_comparison.csv"
+  # 逐日逐序列明细：策略 × 保质期 × 序列 × 天
+  states: "output/freshretail_inventory_simulation_states.csv"
+  # 缺货惩罚敏感性（附加第四张 csv）
+  penalty_sensitivity: "output/freshretail_inventory_penalty_sensitivity.csv"
+  # 效期倍数扫描（仅策略 C；第五张 csv）
+  cap_sweep: "output/freshretail_inventory_cap_sweep.csv"
+  # 方法与结论报告
+  report: "output/freshretail_inventory_report.md"
