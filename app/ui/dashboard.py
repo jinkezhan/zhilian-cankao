@@ -3111,6 +3111,69 @@ def render_top_navbar(snapshot: str) -> None:
     _render_auth_controls()
 
 
+# ---------------------------------------------------------------------------
+# 今日简报：页顶晨会播报
+# 独立函数，只读当前已加载的补货表（不重算、不调模型），不影响轮播图与顶栏。
+# ---------------------------------------------------------------------------
+def build_daily_brief(repl: pd.DataFrame | None, snapshot: str) -> str:
+    """用内存里的补货表拼一句店长口吻的晨会播报；数据为空时返回空串。"""
+    if repl is None or repl.empty:
+        return ""
+
+    if "urgency" in repl.columns:
+        urgency = repl["urgency"].astype(str).str.strip()
+    else:
+        urgency = pd.Series("", index=repl.index, dtype="object")
+    urgent_n = int((urgency == "紧急").sum())
+    suggest_n = int((urgency == "建议补货").sum())
+    plan_n = int((urgency == "计划补货").sum())
+
+    if "expiring_qty" in repl.columns:
+        expiring = pd.to_numeric(repl["expiring_qty"], errors="coerce").fillna(0.0)
+    else:
+        expiring = pd.Series(0.0, index=repl.index)
+    expiring_kinds = int((expiring > 0).sum())
+    expiring_units = float(expiring[expiring > 0].sum())
+
+    head = (
+        f"今天有 {urgent_n} 条序列掉到紧急线"
+        if urgent_n
+        else "今天没有掉到紧急线的货"
+    )
+    expiry = (
+        f"临期 {expiring_kinds} 种、约 {expiring_units:,.2f} {FRESH_UNIT} 得抓紧促销"
+        if expiring_kinds
+        else "临期这块今天空的"
+    )
+    tail = f"其余 {suggest_n} 条建议补货、{plan_n} 条计划补货按表排"
+    return (
+        f"店长早，补货快照 {snapshot}：{head}；{expiry}；{tail}，"
+        "拿不准的随时问我。"
+    )
+
+
+def render_daily_brief(repl: pd.DataFrame | None, snapshot: str) -> None:
+    """页顶晨会播报卡片：只新增一段 HTML，不改动轮播图与顶栏布局。"""
+    text = build_daily_brief(repl, snapshot)
+    if not text:
+        return
+    st.markdown(
+        '<section role="note" style="display:flex;gap:12px;align-items:flex-start;'
+        "background:#fcfcfb;border:1px solid #e1e0d9;border-left:4px solid #2a78d6;"
+        "border-radius:12px;padding:14px 18px;margin:14px 0 16px;"
+        'box-shadow:0 2px 10px rgba(11,11,11,.04);">'
+        '<span style="font-size:18px;line-height:1.35;flex:0 0 auto;">☀</span>'
+        "<div>"
+        '<div style="font-size:11px;font-weight:700;letter-spacing:.12em;'
+        'color:#898781;text-transform:uppercase;margin-bottom:4px;">'
+        "今日简报 · 晨会播报</div>"
+        '<div style="font-size:14.5px;line-height:1.7;color:#0b0b0b;">'
+        f"{html.escape(text)}</div>"
+        "</div></section>",
+        unsafe_allow_html=True,
+    )
+
+
 def main_fresh() -> None:
     repl = load_csv(FRESH_REPL)
     forecast = load_csv(FRESH_FORECAST)
@@ -3122,6 +3185,8 @@ def main_fresh() -> None:
     snapshot = fresh_snapshot_date(forecast, config)
 
     render_top_navbar(snapshot)
+    # 今日简报：页顶晨会播报，数字来自本次已加载的补货表。
+    render_daily_brief(repl, snapshot)
     components.html(
         _fresh_hero_carousel_html(snapshot, "FreshRetailNet-50K（品类已脱敏）"),
         height=400,
