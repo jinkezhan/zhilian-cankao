@@ -14,20 +14,25 @@ Agent 对话复用 app/agent.py 的 run_turn()，不修改其对外接口。
 
 from __future__ import annotations
 
+import base64
 import html
+import io
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 import yaml
 
 APP_DIR = Path(__file__).resolve().parents[1]
 BASE_DIR = APP_DIR.parent
 OUTPUT_DIR = BASE_DIR / "output"
 CONFIG_PATH = BASE_DIR / "config" / "freshretail_inventory.yaml"
+ASSET_DIR = Path(__file__).resolve().parent / "assets"
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
@@ -74,6 +79,7 @@ FRESH_FORECAST = "freshretail_forecast_predictions.csv"
 FRESH_COMPARISON = "freshretail_inventory_policy_comparison.csv"
 FRESH_CAP_SWEEP = "freshretail_inventory_cap_sweep.csv"
 FRESH_SUMMARY = "freshretail_sku_summary_all.csv"
+FRESH_METRICS = "freshretail_forecast_metrics.csv"
 
 # 四档紧急度按固定顺序排序；颜色由 CSS 的 .badge-* 类承载
 URGENCY_RANK = {"紧急": 0, "建议补货": 1, "计划补货": 2, "正常": 3}
@@ -91,11 +97,23 @@ AXIS = "#c3c2b7"
 CSS = """
 <style>
 :root { color-scheme: light; }
-.stApp { background: #f9f9f7; color: #0b0b0b; }
+.stApp { background: #f8f9fa; color: #1f2937; overflow-x: hidden; }
 html, body, [class*="css"] {
   font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
 }
-.block-container { padding-top: 2.2rem; padding-bottom: 3rem; max-width: 1480px; }
+.block-container { padding-top: 1.2rem; padding-bottom: 2rem; max-width: 1480px; }
+/* 主体占满全宽；顶部只留顶栏的 60px，Banner 直接贴住顶栏 */
+section.main .block-container {
+  max-width: 100%;
+  padding: 60px 32px 32px;
+}
+/* 制造企业（保底）模式没有顶栏，不需要预留 60px */
+.stApp:not(:has(.top-navbar)) section.main .block-container { padding-top: 1.2rem; }
+section.main { scroll-behavior: smooth; }
+#section-overview,
+#section-inventory,
+#section-forecast,
+#section-agent { scroll-margin-top: 78px; }
 #MainMenu, footer { visibility: hidden; }
 [data-testid="stHeader"] { display: none; }
 [data-testid="stToolbar"], [data-testid="stDecoration"] { visibility: hidden; }
@@ -103,15 +121,16 @@ html, body, [class*="css"] {
 .brand { color: #0b0b0b; font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
 .subtitle { color: #52514e; font-size: 0.95rem; margin-top: 2px; }
 .snapshot {
-  display: inline-block; background: #f0efec; border: 1px solid #e1e0d9;
-  border-radius: 999px; padding: 6px 12px; color: #52514e;
+  display: inline-block; background: #ffffff; border: 1px solid #e7ecf1;
+  border-radius: 999px; padding: 6px 12px; color: #5f6f82;
   font-size: 0.85rem; white-space: nowrap;
 }
-.topbar-line { border-top: 1px solid #e1e0d9; margin: 6px 0 18px; }
+.topbar-line { border-top: 1px solid #e7ecf1; margin: 6px 0 18px; }
 
 .reco-card {
-  background: #fcfcfb; border: 1px solid rgba(11,11,11,0.08);
-  border-radius: 14px; padding: 18px 18px 16px; margin: 10px 0 14px;
+  background: #ffffff; border: 1px solid #e7ecf1;
+  border-radius: 16px; padding: 18px 18px 16px; margin: 10px 0 14px;
+  box-shadow: 0 6px 20px rgba(11, 42, 74, .04);
 }
 .reco-label { color: #52514e; font-size: 0.85rem; }
 .reco-value {
@@ -151,8 +170,9 @@ html, body, [class*="css"] {
 
 .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 4px 0 6px; }
 .metric-card {
-  background: #fcfcfb; border: 1px solid rgba(11,11,11,0.08);
-  border-radius: 12px; padding: 12px 14px;
+  background: #ffffff; border: 1px solid #e7ecf1;
+  border-radius: 14px; padding: 12px 14px;
+  box-shadow: 0 4px 14px rgba(11, 42, 74, .035);
 }
 .metric-label { color: #52514e; font-size: 0.82rem; }
 .metric-value {
@@ -166,8 +186,9 @@ html, body, [class*="css"] {
   gap: 12px; margin: 6px 0 10px;
 }
 .kpi-card {
-  background: #fcfcfb; border: 1px solid rgba(11,11,11,0.08);
-  border-radius: 14px; padding: 16px 16px 14px;
+  background: #ffffff; border: 1px solid #e7ecf1;
+  border-radius: 16px; padding: 16px 16px 14px;
+  box-shadow: 0 6px 20px rgba(11, 42, 74, .04);
 }
 .kpi-label { color: #52514e; font-size: 0.85rem; }
 .kpi-value {
@@ -180,13 +201,95 @@ html, body, [class*="css"] {
 .kpi-sub { color: #52514e; font-size: 0.85rem; margin-top: 5px; }
 .kpi-source { color: #898781; font-size: 0.75rem; margin-top: 9px; }
 
+/* ---------- 今日概览：Banner 下方的纯白指标卡 ---------- */
+.overview-dock {
+  margin: 44px 0 40px;
+}
+.ov-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+.ov-card {
+  padding: 18px 20px 16px;
+  border: 0;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  transition: transform .22s ease, box-shadow .22s ease;
+}
+.ov-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.08);
+}
+.ov-label {
+  display: flex; align-items: center; gap: 7px;
+  color: #5f6f82; font-size: 12.5px; font-weight: 600;
+  letter-spacing: .02em;
+}
+.ov-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #1E6FB8; flex: 0 0 auto;
+}
+.ov-value {
+  margin-top: 8px;
+  color: #0b2a4a;
+  font-size: 2.3rem;
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.ov-unit {
+  margin-left: 5px;
+  color: #6b7f94;
+  font-size: .95rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.ov-sub { margin-top: 7px; color: #7b8fa4; font-size: 11.5px; line-height: 1.5; }
+.ov-alert .ov-label, .ov-alert .ov-value { color: #b3261e; }
+.ov-alert .ov-dot { background: #d64545; box-shadow: 0 0 0 3px rgba(214, 69, 69, .12); }
+.ov-warn .ov-label, .ov-warn .ov-value { color: #b45309; }
+.ov-warn .ov-dot { background: #d98a1f; box-shadow: 0 0 0 3px rgba(217, 138, 31, .14); }
+.ov-foot { margin: 12px 0 0; color: #8a9bb0; font-size: 11.5px; }
+.ov-vs { color: #b0bcc9; font-weight: 500; margin: 0 4px; }
+.import-banner {
+  display: flex; align-items: center; gap: 8px;
+  margin: 4px 0 14px; padding: 10px 14px;
+  border: 1px solid #CFE3F8; border-radius: 12px;
+  background: #EEF6FF; color: #24527A;
+  font-size: 12.5px; font-weight: 600;
+}
+.import-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #1E6FB8; box-shadow: 0 0 8px rgba(30, 111, 184, .6);
+  flex: 0 0 auto;
+}
+.import-hint { margin-left: auto; color: #8399af; font-size: 11px; font-weight: 500; }
+@media (max-width: 1100px) {
+  .ov-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .overview-dock { margin: 28px 0 28px; }
+  .ov-grid { grid-template-columns: 1fr; gap: 12px; }
+  .ov-value { font-size: 2rem; }
+}
+
 .chart-svg { margin: 4px 0 2px; }
 .chart-svg svg { width: 100%; height: auto; display: block; }
 
-[data-testid="stMetric"] { background: #fcfcfb; }
-[data-testid="stMetricLabel"] { color: #52514e; }
-[data-testid="stMetricValue"] { color: #0b0b0b; }
-[data-testid="stChatMessage"] { background: #fcfcfb; }
+[data-testid="stMetric"] {
+  background: #ffffff;
+  border: 1px solid #e7ecf1;
+  border-left: 4px solid #1E6FB8;
+  border-radius: 16px;
+  padding: 16px 18px;
+  box-shadow: 0 6px 20px rgba(11, 42, 74, .05);
+}
+[data-testid="stMetricLabel"] { color: #5f6f82; font-size: 0.82rem; font-weight: 600; }
+[data-testid="stMetricValue"] { color: #0b2a4a; font-weight: 800; }
+[data-testid="stChatMessage"] { background: #ffffff; }
 
 /* 隐藏彩蛋：右上角极小齿轮，不抢视觉 */
 div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .source-egg-anchor)
@@ -217,6 +320,472 @@ div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .s
   border: none;
   color: #52514e;
 }
+
+/* ---------- 顶部固定导航 ---------- */
+.top-navbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 60px;
+  /* 高于 Streamlit 侧栏（999991），顶栏才能真正浮在所有内容之上 */
+  z-index: 1000000;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 28px;
+  box-sizing: border-box;
+  color: #ffffff;
+  background:
+    linear-gradient(90deg,
+      rgba(7, 20, 38, 0.97) 0%,
+      rgba(11, 42, 74, 0.94) 55%,
+      rgba(16, 64, 110, 0.92) 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 6px 22px rgba(3, 13, 28, 0.22);
+  backdrop-filter: blur(14px) saturate(1.2);
+  font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
+}
+.nav-left { display: flex; align-items: center; gap: 10px; }
+.nav-logo {
+  width: 30px; height: 30px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #1E6FB8, #4FA3E8);
+  color: #fff; font-size: 10px; font-weight: 800; letter-spacing: .04em;
+  box-shadow: 0 4px 12px rgba(30, 111, 184, .4);
+}
+.nav-brand {
+  color: #ffffff; font-size: 15px; font-weight: 700;
+  letter-spacing: .04em; white-space: nowrap;
+}
+.nav-links {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex; align-items: center; justify-content: center;
+  gap: 4px; min-width: 0;
+}
+.nav-links a {
+  color: rgba(255, 255, 255, 0.78);
+  text-decoration: none;
+  font-size: 13.5px;
+  font-weight: 500;
+  padding: 8px 14px;
+  border-radius: 8px;
+  white-space: nowrap;
+  transition: color .15s ease, background .15s ease, text-shadow .15s ease;
+}
+.nav-links a:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+  text-shadow: 0 0 12px rgba(143, 212, 255, 0.8);
+}
+.nav-right {
+  display: flex; align-items: center; justify-content: flex-end;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+.nav-store {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 32px; padding: 0 10px 0 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  backdrop-filter: blur(8px);
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.nav-store:hover {
+  background: rgba(255, 255, 255, 0.11);
+  border-color: rgba(143, 212, 255, 0.34);
+}
+.nav-store:focus-within {
+  border-color: rgba(143, 212, 255, 0.55);
+  box-shadow: 0 0 0 3px rgba(143, 212, 255, 0.12);
+}
+.nav-store-label {
+  color: rgba(255, 255, 255, 0.52);
+  font-size: 10.5px; letter-spacing: .06em; white-space: nowrap;
+}
+.nav-store-control { position: relative; display: inline-flex; align-items: center; }
+.nav-store-select {
+  appearance: none; -webkit-appearance: none;
+  max-width: 138px;
+  padding: 0 16px 0 0;
+  border: 0; outline: none; background: transparent;
+  color: #ffffff; font-family: inherit;
+  font-size: 12.5px; font-weight: 600;
+  cursor: pointer;
+}
+.nav-store-select option { background: #0d2a49; color: #ffffff; }
+.nav-store-caret {
+  position: absolute; right: 0; top: 50%;
+  transform: translateY(-50%);
+  color: #8fd4ff; font-size: 9px; line-height: 1;
+  pointer-events: none;
+}
+.nav-status {
+  display: inline-flex; align-items: center; gap: 7px;
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 12.5px; white-space: nowrap;
+}
+.nav-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #4ADE80;
+  box-shadow: 0 0 8px rgba(74, 222, 128, .8);
+}
+.nav-date {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 11.5px; letter-spacing: .04em; white-space: nowrap;
+}
+.nav-auth-label {
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+}
+.nav-auth-slot { width: 34px; height: 34px; flex: 0 0 auto; }
+
+/* ---------- 顶栏模拟登录（Streamlit 1.30 无 st.popover，用固定浮层实现） ---------- */
+section.main .block-container div[data-testid="element-container"]:has(.nav-auth-anchor),
+section.main .block-container div[data-testid="element-container"]:has(.auth-panel-anchor) {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: visible;
+}
+section.main .block-container div[data-testid="element-container"]:has(> div[data-testid="stMarkdown"] .nav-auth-anchor),
+section.main .block-container div[data-testid="element-container"]:has(> div[data-testid="stMarkdown"] .auth-panel-anchor) {
+  display: none;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .nav-auth-anchor) {
+  position: fixed !important;
+  top: 13px;
+  right: 28px;
+  width: 34px;
+  height: 34px;
+  z-index: 1000002;
+  padding: 0;
+  margin: 0;
+  gap: 0;
+  background: transparent;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .nav-auth-anchor) div[data-testid="stButton"] {
+  width: 34px;
+  margin: 0;
+  padding: 0;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .nav-auth-anchor) button {
+  width: 34px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  border: 1px solid rgba(255, 255, 255, 0.35) !important;
+  background: linear-gradient(135deg, #1E6FB8, #4FA3E8) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(3, 13, 28, 0.35) !important;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .nav-auth-anchor) button p {
+  color: #ffffff !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .nav-auth-anchor) button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(3, 13, 28, 0.45) !important;
+  background: linear-gradient(135deg, #2479c4, #5fb0f0) !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .auth-panel-anchor) {
+  position: fixed !important;
+  top: 68px;
+  right: 28px;
+  width: 300px;
+  z-index: 1000003;
+  padding: 18px 18px 16px;
+  border-radius: 16px;
+  border: 1px solid #e7ecf1;
+  background: #ffffff;
+  box-shadow: 0 18px 44px rgba(11, 42, 74, 0.18);
+  gap: 8px;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .auth-panel-anchor) > div[data-testid="element-container"],
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .auth-panel-anchor) > div[data-testid="stForm"],
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .auth-panel-anchor) div[data-testid="stButton"],
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .auth-panel-anchor) div[data-testid="stFormSubmitButton"] {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .auth-panel-anchor)::before {
+  content: "";
+  position: absolute;
+  top: -7px;
+  right: 13px;
+  width: 12px;
+  height: 12px;
+  background: #ffffff;
+  border-left: 1px solid #e7ecf1;
+  border-top: 1px solid #e7ecf1;
+  transform: rotate(45deg);
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .auth-panel-anchor) div[data-testid="stForm"] {
+  border: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .auth-panel-anchor) div[data-testid="stFormSubmitButton"] button {
+  background: #0B2A4A !important;
+  border: 1px solid #0B2A4A !important;
+  color: #ffffff !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .auth-panel-anchor) div[data-testid="stFormSubmitButton"] button p {
+  color: #ffffff !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .auth-panel-anchor) div[data-testid="stFormSubmitButton"] button:hover {
+  background: #123a63 !important;
+  border-color: #123a63 !important;
+}
+.auth-panel-title { color: #0B2A4A; font-size: 15px; font-weight: 700; letter-spacing: .01em; }
+.auth-user-row { display: flex; align-items: center; gap: 10px; margin: 12px 0 4px; }
+.auth-avatar {
+  width: 38px; height: 38px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #0B2A4A, #1E6FB8);
+  color: #ffffff; font-size: 13px; font-weight: 700;
+  box-shadow: 0 4px 12px rgba(30, 111, 184, .25);
+}
+.auth-user-name { color: #0B2A4A; font-size: 13.5px; font-weight: 700; }
+.auth-user-meta { color: #7b8fa4; font-size: 11.5px; margin-top: 2px; }
+.auth-panel-note { color: #8a9bb0; font-size: 11.5px; margin: 6px 0 10px; }
+
+@media (max-width: 1280px) {
+  .nav-date { display: none; }
+}
+@media (max-width: 1020px) {
+  .nav-links { display: none; }
+  .nav-store-label { display: none; }
+  .nav-store-select { max-width: 120px; }
+}
+@media (max-width: 900px) {
+  .top-navbar { padding: 0 16px; gap: 12px; }
+  .nav-links { display: none; }
+  .nav-date { display: none; }
+  div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .nav-auth-anchor),
+  div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .auth-panel-anchor) {
+    right: 16px;
+  }
+}
+@media (max-width: 640px) {
+  .nav-auth-label { display: none; }
+  div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .auth-panel-anchor) {
+    width: calc(100vw - 32px);
+    max-width: 300px;
+    right: 16px;
+  }
+}
+
+/* ---------- 全宽头部：顶栏与 Banner 无缝衔接 ---------- */
+/* 这些零高度元素（样式注入、滚顶脚本、固定顶栏本身）移出文档流，
+   避免它们在流式布局里撑出 16px 的 gap，让 Banner 成为第一个内容块。 */
+section.main .block-container div[data-testid="element-container"]:has(> div[data-testid="stMarkdown"] style),
+section.main .block-container div[data-testid="element-container"]:has(> iframe[height="0"]):has(+ div[data-testid="stHorizontalBlock"] .source-egg-anchor) {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+section.main .block-container div[data-testid="element-container"]:has(.top-navbar) {
+  position: absolute;
+  width: 100%;
+  height: 0;
+}
+/* Banner 抵消主体左右内边距，铺满整个视口；顶部圆角去掉，紧贴顶栏 */
+section.main .block-container div[data-testid="element-container"]:has(> iframe[height="400"]) {
+  width: auto;
+  margin-left: -32px;
+  margin-right: -32px;
+}
+section.main .block-container iframe[data-testid="stIFrame"][height="400"] {
+  display: block;
+  width: 100% !important;
+}
+/* 隐藏的数据源彩蛋齿轮改为固定悬浮，不占用 Banner 高度 */
+div[data-testid="stHorizontalBlock"]:has(.source-egg-anchor) {
+  position: fixed !important;
+  top: 68px;
+  right: 18px;
+  width: 24px !important;
+  z-index: 1000001;
+  margin: 0 !important;
+  padding: 0 !important;
+  gap: 0 !important;
+}
+div[data-testid="stHorizontalBlock"]:has(.source-egg-anchor) > div[data-testid="column"]:first-child {
+  display: none;
+}
+div[data-testid="stHorizontalBlock"]:has(.source-egg-anchor) > div[data-testid="column"]:last-child {
+  width: 24px !important;
+  flex: 0 0 24px !important;
+  min-width: 0 !important;
+}
+
+/* ---------- 侧边栏（已由顶栏替代，彻底隐藏） ---------- */
+[data-testid="stSidebar"],
+[data-testid="collapsedControl"] { display: none !important; }
+.side-brand {
+  display: flex; align-items: center; gap: 11px;
+  padding: 8px 2px 14px;
+}
+.side-brand-mark {
+  width: 42px; height: 42px; border-radius: 12px;
+  background: linear-gradient(135deg, #0B2A4A, #1E6FB8);
+  color: #fff; display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 800; letter-spacing: .05em;
+  box-shadow: 0 6px 16px rgba(30, 111, 184, .28);
+}
+.side-brand-title { color: #0B2A4A; font-size: 16px; font-weight: 800; line-height: 1.2; }
+.side-brand-sub { color: #7b8fa4; font-size: 10.5px; margin-top: 3px; letter-spacing: .04em; }
+.side-nav-label {
+  color: #8399af; font-size: 10.5px; font-weight: 700;
+  letter-spacing: .16em; text-transform: uppercase;
+  margin: 2px 0 8px 4px;
+}
+.side-nav { display: flex; flex-direction: column; gap: 5px; }
+.side-nav a {
+  display: flex; align-items: center; gap: 12px;
+  color: #24384d; text-decoration: none;
+  font-size: 14.5px; font-weight: 600;
+  padding: 11px 12px; border-radius: 11px;
+  transition: background .15s ease, color .15s ease;
+}
+.side-nav a:hover { background: #eef5fd; color: #0B2A4A; }
+.side-nav .side-icon {
+  width: 25px; text-align: center; font-size: 20px; line-height: 1;
+  flex: 0 0 auto;
+}
+.side-nav .side-text { font-size: 14.5px; letter-spacing: .01em; }
+
+/* ---------- 网站封底 ---------- */
+.site-footer {
+  position: relative;
+  width: 100vw;
+  margin: 44px calc(50% - 50vw) 0;
+  padding: 40px 0;
+  box-sizing: border-box;
+  color: #ffffff;
+  text-align: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.10);
+  background:
+    radial-gradient(ellipse at 18% 0%, rgba(60, 148, 226, 0.16), transparent 46%),
+    linear-gradient(135deg, #0f2027 0%, #203a43 48%, #2c5364 100%);
+  box-shadow: inset 0 1px 0 rgba(143, 212, 255, 0.08);
+}
+.site-footer::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 14%;
+  right: 14%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(143, 212, 255, 0.42) 50%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+.site-footer .footer-line1 {
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.8;
+  letter-spacing: 1px;
+}
+.site-footer .footer-line2 {
+  color: #a0aec0;
+  font-size: 12px;
+  line-height: 1.8;
+  letter-spacing: 1px;
+  margin-top: 6px;
+}
+
+/* ---------- 生鲜首页 Banner ---------- */
+.fresh-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+  min-height: 380px;
+  margin: 2px 0 20px;
+  background: #071b32;
+  box-shadow: 0 18px 45px rgba(7, 27, 50, .18);
+}
+.fresh-hero-media {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+.fresh-hero-panel { overflow: hidden; }
+.fresh-hero-panel img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transform: scale(1.02);
+}
+.fresh-hero-shade {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg,
+      rgba(3, 14, 28, .95) 0%,
+      rgba(4, 18, 35, .84) 42%,
+      rgba(5, 22, 42, .40) 72%,
+      rgba(5, 22, 42, .16) 100%),
+    linear-gradient(0deg, rgba(2, 10, 22, .58), transparent 58%);
+}
+.fresh-hero-copy {
+  position: relative;
+  z-index: 2;
+  max-width: 780px;
+  padding: 46px 46px;
+  color: #fff;
+}
+.fresh-hero-kicker {
+  color: #8fd4ff;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+.fresh-hero-copy h1 {
+  color: #ffffff;
+  font-size: clamp(24px, 2.4vw, 34px);
+  line-height: 1.28;
+  font-weight: 800;
+  letter-spacing: .01em;
+  margin: 0 0 12px;
+}
+.fresh-hero-copy p {
+  color: #d6e8f7;
+  font-size: 14.5px;
+  line-height: 1.8;
+  margin: 0;
+  max-width: 700px;
+}
+@media (max-width: 760px) {
+  .fresh-hero { min-height: 420px; }
+  .fresh-hero-media { grid-template-columns: 1fr; }
+  .fresh-hero-panel:nth-child(2),
+  .fresh-hero-panel:nth-child(3) { display: none; }
+  .fresh-hero-copy { padding: 30px 24px; }
+  .fresh-hero-copy h1 { font-size: 24px; }
+}
+
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -485,16 +1054,311 @@ def log_fresh_kpi(values: dict[str, float | int], snapshot: str) -> None:
 # ---------------------------------------------------------------------------
 # 生鲜版：顶部栏 + KPI
 # ---------------------------------------------------------------------------
+@st.cache_data(show_spinner=False)
+def _fresh_hero_html() -> str:
+    """生鲜首页三图 Banner；图片统一裁切为 960×720 后嵌入。"""
+    panels = []
+    for index, filename in enumerate(("hero_1.jpg", "hero_2.jpg", "hero_3.jpg"), 1):
+        encoded = base64.b64encode((ASSET_DIR / filename).read_bytes()).decode("ascii")
+        panels.append(
+            '<div class="fresh-hero-panel">'
+            f'<img src="data:image/jpeg;base64,{encoded}" alt="生鲜前置仓场景 {index}">'
+            "</div>"
+        )
+
+    return (
+        '<div class="fresh-hero">'
+        '<div class="fresh-hero-media">' + "".join(panels) + "</div>"
+        '<div class="fresh-hero-shade"></div>'
+        '<div class="fresh-hero-copy">'
+        '<div class="fresh-hero-kicker">FRESH SUPPLY CHAIN · AI REPLENISHMENT</div>'
+        "<h1>智链参谋 · 生鲜前置仓 AI 补货决策系统</h1>"
+        "<p>数据驱动源头直采，算法锁定新鲜每一刻。"
+        "让每一份农产品，都能以最新鲜的状态极速送达。</p>"
+        "</div>"
+        "</div>"
+    )
+
+
+@st.cache_data(show_spinner=False)
+def _fresh_hero_carousel_html(snapshot: str, data_label: str) -> str:
+    """生鲜首页三图轮播 Banner（纯 HTML/CSS/JS，无第三方库）。"""
+    slides = []
+    dots = []
+    for index, filename in enumerate(("photoa.jpg", "photob.jpg", "photoc.jpg")):
+        encoded = base64.b64encode((ASSET_DIR / filename).read_bytes()).decode("ascii")
+        active = " active" if index == 0 else ""
+        slides.append(
+            f'<div class="hero-slide{active}">'
+            f'<img src="data:image/jpeg;base64,{encoded}" alt="生鲜前置仓场景 {index + 1}">'
+            "</div>"
+        )
+        dots.append(
+            f'<button class="hero-dot{" active" if index == 0 else ""}" '
+            f'type="button" aria-label="切换到第 {index + 1} 张"></button>'
+        )
+
+    template = r"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: #f8f9fa;
+    font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
+    overflow: hidden;
+  }
+  .hero-carousel {
+    position: relative;
+    width: 100%;
+    height: 400px;
+    overflow: hidden;
+    border-radius: 0;
+    background: #071b32;
+  }
+  .hero-slide {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity .9s ease;
+    z-index: 0;
+  }
+  .hero-slide.active { opacity: 1; }
+  .hero-slide img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transform: scale(1.02);
+    filter: saturate(1.08) brightness(1.03);
+    transform-origin: center center;
+  }
+  .hero-slide.active img {
+    animation: heroKenBurns 6.5s ease-out forwards;
+  }
+  @keyframes heroKenBurns {
+    from { transform: scale(1.02) translate3d(0, 0, 0); }
+    to { transform: scale(1.10) translate3d(-0.8%, -0.8%, 0); }
+  }
+  .hero-shade {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: linear-gradient(
+      180deg,
+      rgba(0, 0, 0, 0.10) 0%,
+      rgba(0, 0, 0, 0.22) 42%,
+      rgba(0, 0, 0, 0.62) 100%
+    );
+  }
+  .hero-copy {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 30px 42px 54px;
+  }
+  .hero-kicker {
+    color: #8fd4ff;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    margin-bottom: 13px;
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35);
+  }
+  .hero-copy h1 {
+    color: #ffffff;
+    font-size: clamp(24px, 2.6vw, 36px);
+    line-height: 1.28;
+    font-weight: 800;
+    letter-spacing: .01em;
+    margin: 0 0 14px;
+    max-width: 980px;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.50);
+  }
+  .hero-copy p {
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 15px;
+    line-height: 1.8;
+    font-weight: 400;
+    margin: 0;
+    max-width: 880px;
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
+  }
+  .hero-meta {
+    position: absolute;
+    right: 30px;
+    bottom: 26px;
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+    max-width: calc(100% - 60px);
+    pointer-events: none;
+  }
+  .hero-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    background: rgba(7, 27, 50, 0.44);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: .01em;
+    white-space: nowrap;
+    backdrop-filter: blur(10px) saturate(1.2);
+    -webkit-backdrop-filter: blur(10px) saturate(1.2);
+    box-shadow: 0 6px 18px rgba(3, 13, 28, 0.20);
+  }
+  .hero-pill-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #4ade80;
+    box-shadow: 0 0 8px rgba(74, 222, 128, 0.8);
+    flex: 0 0 auto;
+  }
+  .hero-dots {
+    position: absolute;
+    left: 50%;
+    bottom: 26px;
+    transform: translateX(-50%);
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .hero-dot {
+    width: 8px;
+    height: 8px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, .65);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .25);
+    cursor: pointer;
+    transition: width .25s ease, background .25s ease, border-color .25s ease;
+  }
+  .hero-dot.active {
+    width: 22px;
+    background: #8fd4ff;
+    border-color: #8fd4ff;
+  }
+  @media (max-width: 760px) {
+    .hero-carousel { height: 380px; }
+    .hero-copy { padding: 24px 20px 50px; }
+    .hero-copy h1 { font-size: 22px; }
+    .hero-copy p { font-size: 13px; }
+    .hero-kicker { font-size: 9px; }
+    .hero-meta {
+      right: 16px; bottom: 18px;
+      flex-direction: column; align-items: flex-end; gap: 6px;
+      max-width: calc(100% - 32px);
+    }
+    .hero-pill { font-size: 10px; padding: 5px 9px; }
+    .hero-dots { left: 18px; bottom: 18px; transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-slide.active img { animation: none; transform: scale(1.02); }
+    .hero-slide { transition: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="hero-carousel" id="fresh-hero-carousel">
+    __SLIDES__
+    <div class="hero-shade"></div>
+    <div class="hero-copy">
+      <div class="hero-kicker">FRESH SUPPLY CHAIN · AI REPLENISHMENT</div>
+      <h1>智链参谋 · 生鲜前置仓 AI 补货决策系统</h1>
+      <p>数据驱动源头直采，算法锁定新鲜每一刻。让每一份农产品，都能以最新鲜的状态极速送达。</p>
+    </div>
+    <div class="hero-meta">
+      <span class="hero-pill"><span class="hero-pill-dot"></span>补货快照 __SNAPSHOT__</span>
+      <span class="hero-pill">数据：__DATA_LABEL__</span>
+    </div>
+    <div class="hero-dots" id="hero-dots" role="tablist" aria-label="Banner 轮播">
+      __DOTS__
+    </div>
+  </div>
+  <script>
+    (function () {
+      var slides = Array.prototype.slice.call(document.querySelectorAll(".hero-slide"));
+      var dots = Array.prototype.slice.call(document.querySelectorAll(".hero-dot"));
+      var current = 0;
+      var timer = null;
+      var interval = 3500;
+
+      function show(next) {
+        if (!slides.length) return;
+        slides[current].classList.remove("active");
+        dots[current].classList.remove("active");
+        current = (next + slides.length) % slides.length;
+        slides[current].classList.add("active");
+        dots[current].classList.add("active");
+      }
+
+      function nextSlide() {
+        show(current + 1);
+      }
+
+      function start() {
+        stop();
+        timer = window.setInterval(nextSlide, interval);
+      }
+
+      function stop() {
+        if (timer !== null) {
+          window.clearInterval(timer);
+          timer = null;
+        }
+      }
+
+      dots.forEach(function (dot, index) {
+        dot.addEventListener("click", function () {
+          show(index);
+          start();
+        });
+      });
+
+      var root = document.getElementById("fresh-hero-carousel");
+      root.addEventListener("mouseenter", stop);
+      root.addEventListener("mouseleave", start);
+      document.addEventListener("visibilitychange", function () {
+        if (document.hidden) stop();
+        else start();
+      });
+
+      start();
+    })();
+  </script>
+</body>
+</html>"""
+    return (
+        template.replace("__SLIDES__", "".join(slides))
+        .replace("__DOTS__", "".join(dots))
+        .replace("__SNAPSHOT__", html.escape(str(snapshot)))
+        .replace("__DATA_LABEL__", html.escape(str(data_label)))
+    )
+
+
 def render_fresh_header(snapshot: str) -> None:
     c1, c2, c3 = st.columns([6.0, 2.0, 2.4])
     with c1:
-        st.markdown(
-            f"""
-            <div class="brand">智链参谋 · 生鲜前置仓补货决策助手</div>
-            <div class="subtitle">每天告诉你，每家店每个 SKU 明天该补多少 {FRESH_UNIT}</div>
-            """,
-            unsafe_allow_html=True,
-        )
+        st.caption("生鲜前置仓 · 每日补货决策")
     with c2:
         st.markdown(
             f'<div class="snapshot">补货快照 {html.escape(snapshot)}</div>',
@@ -519,52 +1383,107 @@ def _kpi_card(label: str, value: str, sub: str, source: str) -> str:
     )
 
 
-def render_fresh_kpi(values: dict[str, float | int], snapshot: str) -> None:
-    st.markdown("### 今日概览")
-    source_snapshot = f"来源：补货快照 {snapshot}"
+def fresh_model_wmape(metrics: pd.DataFrame | None) -> float | None:
+    if metrics is None or metrics.empty or "wmape" not in metrics.columns:
+        return None
+    models = metrics["model"].astype(str)
+    scopes = metrics["scope"].astype(str)
+    rows = metrics[(models == "lgbm_a") & (scopes == "全部")]
+    if rows.empty:
+        rows = metrics[models.str.startswith("lgbm_a")].head(1)
+    if rows.empty:
+        return None
+    value = pd.to_numeric(rows.iloc[0]["wmape"], errors="coerce")
+    return None if pd.isna(value) else float(value)
+
+
+def render_fresh_kpi(
+    values: dict[str, float | int],
+    snapshot: str,
+    metrics: pd.DataFrame | None = None,
+) -> None:
+    wmape = fresh_model_wmape(metrics)
+    accuracy = (1.0 - wmape) * 100 if wmape is not None else None
+    expiring_qty = float(values["expiring_qty"])
+
+    cards = [
+        {
+            "label": "总 SKU 数",
+            "value": f"{int(values['series']):,}",
+            "unit": "个",
+            "sub": "纳入分析的店 × SKU 序列",
+            "tone": "",
+            "hint": "当前纳入分析的店 × SKU 序列数",
+        },
+        {
+            "label": "紧急缺货数",
+            "value": f"{int(values['urgent']):,}",
+            "unit": "个",
+            "sub": "需立即补货的序列",
+            "tone": "ov-alert",
+            "hint": "紧急度 = 紧急的序列数",
+        },
+        {
+            "label": "临期预警数",
+            "value": f"{int(values['expiring_series']):,}",
+            "unit": "个",
+            "sub": f"涉及临期 {expiring_qty:,.1f} {FRESH_UNIT}",
+            "tone": "ov-warn",
+            "hint": f"涉及临期数量 {expiring_qty:,.2f} {FRESH_UNIT}",
+        },
+        {
+            "label": "模型预测准确率",
+            "value": f"{accuracy:.1f}" if accuracy is not None else "—",
+            "unit": "%" if accuracy is not None else "",
+            "sub": (
+                f"1 − WMAPE · WMAPE {wmape:.1%}"
+                if wmape is not None
+                else "预测精度指标暂缺"
+            ),
+            "tone": "",
+            "hint": (
+                f"1 − WMAPE；WMAPE {wmape:.2%}（lgbm_a / 全部）"
+                if wmape is not None
+                else "未找到预测精度指标"
+            ),
+        },
+    ]
+
+    cards_html = []
+    for card in cards:
+        tone = f" {card['tone']}" if card["tone"] else ""
+        cards_html.append(
+            f'<article class="ov-card{tone}" title="{html.escape(card["hint"])}">'
+            f'<div class="ov-label"><span class="ov-dot"></span>'
+            f'{html.escape(card["label"])}</div>'
+            f'<div class="ov-value">{html.escape(card["value"])}'
+            f'<span class="ov-unit">{html.escape(card["unit"])}</span></div>'
+            f'<div class="ov-sub">{html.escape(card["sub"])}</div>'
+            "</article>"
+        )
+
+    foot_parts = []
     short_shelf = values.get("short_shelf")
     c_rate = values.get("spoilage_c")
     b_rate = values.get("spoilage_b")
-
     if short_shelf is not None and c_rate is not None and b_rate is not None:
-        compare_value = (
-            f"{float(c_rate):.2%}<span class='kpi-vs'>vs</span>{float(b_rate):.2%}"
+        foot_parts.append(
+            f"短保报损对比（{int(short_shelf)} 天档）：本方案 "
+            f"{float(c_rate):.2%} <span class=\"ov-vs\">vs</span> 传统补货 "
+            f"{float(b_rate):.2%}"
         )
-        compare_sub = (
-            f"本方案 vs 传统补货 · {int(short_shelf)} 天保质期"
-        )
-        compare_source = f"来源：策略对比表 · {int(short_shelf)} 天保质期"
-    else:
-        compare_value = "—"
-        compare_sub = "策略对比表缺失"
-        compare_source = "来源：策略对比表"
+    foot = (
+        '<div class="ov-foot">' + " · ".join(foot_parts) + "</div>" if foot_parts else ""
+    )
 
-    cards = [
-        _kpi_card(
-            "在管序列",
-            f"{int(values['series']):,}<span class='kpi-unit'>条</span>",
-            "店 × SKU 组合",
-            source_snapshot,
-        ),
-        _kpi_card(
-            "今天要补",
-            (
-                f"<span class='kpi-value-sm'>紧急 {int(values['urgent'])} 条"
-                f" / 建议补货 {int(values['advised'])} 条</span>"
-            ),
-            "按紧急度现算",
-            source_snapshot,
-        ),
-        _kpi_card(
-            "临期预警",
-            f"{float(values['expiring_qty']):,.2f}<span class='kpi-unit'>{FRESH_UNIT}</span>",
-            f"涉及 {int(values['expiring_series'])} 条序列",
-            source_snapshot,
-        ),
-        _kpi_card("短保报损对比", compare_value, compare_sub, compare_source),
-    ]
     st.markdown(
-        '<div class="kpi-grid">' + "".join(cards) + "</div>",
+        '<section class="overview-dock" id="section-overview" '
+        f'data-snapshot="{html.escape(str(snapshot))}">'
+        '<div class="ov-grid">'
+        + "".join(cards_html)
+        + "</div>"
+        + foot
+        + "</section>",
         unsafe_allow_html=True,
     )
 
@@ -579,6 +1498,481 @@ def _normalize_search(raw: str) -> str:
     return q.replace(" ", "").replace("-", "")
 
 
+def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
+    """卡片式补货表格：行间距、状态色、表头点击排序。"""
+    numeric_columns = {
+        col for col in display.columns if pd.api.types.is_numeric_dtype(display[col])
+    }
+    badge_classes = {
+        "紧急": "badge-danger",
+        "建议补货": "badge-warning",
+        "计划补货": "badge-info",
+        "正常": "badge-success",
+    }
+
+    # 首列与两个状态列使用固定比例，其余数值列均分剩余宽度。
+    # 导入数据列数较少时，首列适当加宽，避免数值列被拉得过大。
+    column_count = len(display.columns)
+    if column_count == 1:
+        first_width = 100
+    elif column_count == 2:
+        first_width = 50
+    elif column_count <= 4:
+        first_width = 28
+    else:
+        first_width = 18
+    fixed_widths = {"店 / SKU": first_width, "紧急度": 13, "临期": 8}
+    present_fixed = {
+        col: width for col, width in fixed_widths.items() if col in display.columns
+    }
+    flexible_columns = [
+        col for col in display.columns if col not in present_fixed
+    ]
+    flexible_width = (
+        (100 - sum(present_fixed.values())) / len(flexible_columns)
+        if flexible_columns
+        else 0
+    )
+    colgroup = "".join(
+        f'<col style="width: {present_fixed.get(col, flexible_width):.2f}%">'
+        for col in display.columns
+    )
+
+    headers = []
+    for col in display.columns:
+        col_type = "num" if col in numeric_columns else "text"
+        header_text = str(col).replace(f"（{FRESH_UNIT}）", "")
+        headers.append(
+            f'<th data-type="{col_type}">{html.escape(header_text)}</th>'
+        )
+
+    rows = []
+    for _, row in display.iterrows():
+        is_expiring = str(row.get("临期", "")) == "是"
+        row_class = ' class="row-expiring"' if is_expiring else ""
+        cells = []
+        for col in display.columns:
+            value = row[col]
+            if col in numeric_columns:
+                number = float(value)
+                text = (
+                    f"{int(round(number)):,}"
+                    if str(col).startswith("建议订货")
+                    else f"{number:,.2f}"
+                )
+                cells.append(
+                    f'<td class="num" data-sort="{number}">{html.escape(text)}</td>'
+                )
+                continue
+
+            text = html.escape(str(value))
+            if col == "紧急度":
+                badge = badge_classes.get(str(value), "badge-muted")
+                cells.append(
+                    f'<td data-sort="{text}">'
+                    f'<span class="badge {badge}">{text}</span></td>'
+                )
+            elif col == "临期":
+                if is_expiring:
+                    cells.append(
+                        '<td data-sort="1">'
+                        '<span class="badge badge-expiring">临期</span></td>'
+                    )
+                else:
+                    cells.append(
+                        '<td data-sort="0">'
+                        '<span class="expiry-ok" title="未临期">✓</span></td>'
+                    )
+            elif col == "店 / SKU":
+                cells.append(
+                    f'<td class="sku" data-sort="{text}">{text}</td>'
+                )
+            else:
+                cells.append(f'<td data-sort="{text}">{text}</td>')
+
+        rows.append(f"<tr{row_class}>" + "".join(cells) + "</tr>")
+
+    template = r"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; min-height: 100%;
+    background: #f8f9fa;
+    font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
+    color: #334155;
+  }
+  .table-scroll {
+    width: 100%;
+    max-height: 500px;
+    overflow: auto;
+    border-radius: 14px;
+    padding: 2px 3px 4px;
+  }
+  table.fresh-card-table {
+    width: 100%;
+    min-width: 1040px;
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0 8px;
+    font-size: 12.5px;
+  }
+  thead th {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: linear-gradient(180deg, #0E3A63, #0B2F52);
+    color: #EAF3FB;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: .02em;
+    text-align: left;
+    white-space: nowrap;
+    padding: 11px 11px;
+    cursor: pointer;
+    user-select: none;
+  }
+  thead th[data-type="num"] { text-align: right; }
+  thead th:first-child { border-radius: 9px 0 0 9px; }
+  thead th:last-child { border-radius: 0 9px 9px 0; }
+  thead th.sorted-asc::after { content: " ▲"; color: #8FD4FF; font-size: 10px; }
+  thead th.sorted-desc::after { content: " ▼"; color: #8FD4FF; font-size: 10px; }
+  tbody td {
+    background: #FFFFFF;
+    padding: 12px 11px;
+    white-space: nowrap;
+    border-top: 1px solid #E8EFF7;
+    border-bottom: 1px solid #E8EFF7;
+    vertical-align: middle;
+  }
+  tbody td:first-child {
+    border-left: 1px solid #E8EFF7;
+    border-radius: 10px 0 0 10px;
+  }
+  tbody td:last-child {
+    border-right: 1px solid #E8EFF7;
+    border-radius: 0 10px 10px 0;
+  }
+  tbody tr.row-expiring td { background: #FFF7E8; }
+  tbody tr:hover td { background: #F6FAFE; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; color: #0B2A4A; font-weight: 600; }
+  td.sku { text-align: left; color: #0B2A4A; font-weight: 700; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border-radius: 999px;
+    font-size: 12px; font-weight: 700; line-height: 1.4;
+  }
+  .badge::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor;
+  }
+  .badge-danger { color: #B42318; background: #FEE4E2; }
+  .badge-success { color: #067647; background: #DCFAE6; }
+  .badge-warning { color: #B54708; background: #FEF0C7; }
+  .badge-info { color: #1C5CAB; background: #EEF4FD; }
+  .badge-expiring { color: #B45309; background: #FFF3E8; }
+  .badge-muted { color: #475569; background: #E2E8F0; }
+  .expiry-ok { color: #2E9E5B; font-size: 13px; font-weight: 700; }
+</style>
+</head>
+<body>
+  <div class="table-scroll">
+    <table class="fresh-card-table" id="fresh-card-table">
+      <colgroup>__COLS__</colgroup>
+      <thead><tr>__HEADERS__</tr></thead>
+      <tbody>__ROWS__</tbody>
+    </table>
+  </div>
+  <script>
+    (function () {
+      var table = document.getElementById("fresh-card-table");
+      var tbody = table.querySelector("tbody");
+      var headers = Array.prototype.slice.call(table.querySelectorAll("thead th"));
+      var sortIndex = -1;
+      var sortDirection = 1;
+
+      headers.forEach(function (th, index) {
+        th.addEventListener("click", function () {
+          if (sortIndex === index) sortDirection *= -1;
+          else { sortIndex = index; sortDirection = 1; }
+          headers.forEach(function (h) {
+            h.classList.remove("sorted-asc", "sorted-desc");
+          });
+          th.classList.add(sortDirection === 1 ? "sorted-asc" : "sorted-desc");
+          var rows = Array.prototype.slice.call(tbody.querySelectorAll("tr"));
+          var numeric = th.getAttribute("data-type") === "num";
+          rows.sort(function (a, b) {
+            var av = a.children[index].getAttribute("data-sort") || "";
+            var bv = b.children[index].getAttribute("data-sort") || "";
+            if (numeric) {
+              return (parseFloat(av) - parseFloat(bv)) * sortDirection;
+            }
+            return String(av).localeCompare(String(bv), "zh-CN") * sortDirection;
+          });
+          rows.forEach(function (row) { tbody.appendChild(row); });
+        });
+      });
+    })();
+  </script>
+</body>
+</html>"""
+    return (
+        template.replace("__HEADERS__", "".join(headers))
+        .replace("__ROWS__", "".join(rows))
+        .replace("__COLS__", colgroup)
+    )
+
+
+# ---------------------------------------------------------------------------
+# 底部数据导入（CSV / Excel）
+# ---------------------------------------------------------------------------
+_IMPORT_REQUIRED_FIELDS = ("SKU", "库存", "销量")
+_IMPORT_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
+    "SKU": ("SKU", "sku_id", "商品编码", "物料编码", "店 / SKU", "序列"),
+    "库存": (
+        "库存",
+        "现有库存",
+        "当前库存",
+        "库存数量",
+        "on_hand",
+        "current_stock",
+        "stock",
+        "inventory",
+    ),
+    "销量": (
+        "销量",
+        "销售量",
+        "日均销量",
+        "销量指数",
+        "sales",
+        "sales_qty",
+        "demand",
+        "actual_qty",
+        "qty",
+    ),
+    "建议订货": ("建议订货", "建议补货量", "补货量", "suggest_qty", "order_qty"),
+    "紧急度": ("紧急度", "库存状态", "状态", "urgency", "priority"),
+    "临期数量": ("临期数量", "临期数", "expiring_qty", "expiring"),
+}
+
+
+def _normalize_import_name(name: object) -> str:
+    text = str(name or "").strip().lower()
+    text = re.sub(r"[（(][^）)]*[）)]", "", text)
+    return re.sub(r"[\s_\-/]+", "", text)
+
+
+def _match_import_columns(df: pd.DataFrame) -> dict[str, str]:
+    normalized: dict[str, str] = {}
+    for col in df.columns:
+        normalized.setdefault(_normalize_import_name(col), col)
+    mapping: dict[str, str] = {}
+    used: set[str] = set()
+    for field, aliases in _IMPORT_COLUMN_ALIASES.items():
+        for alias in aliases:
+            col = normalized.get(_normalize_import_name(alias))
+            if col is not None and col not in used:
+                mapping[field] = col
+                used.add(col)
+                break
+    return mapping
+
+
+def _read_uploaded_table(uploaded) -> pd.DataFrame:
+    data = uploaded.getvalue()
+    name = str(uploaded.name).lower()
+    if name.endswith(".csv"):
+        last_error: Exception | None = None
+        for encoding in ("utf-8-sig", "gbk", "utf-8"):
+            try:
+                return pd.read_csv(io.BytesIO(data), encoding=encoding)
+            except UnicodeDecodeError as exc:
+                last_error = exc
+        raise ValueError("CSV 编码无法识别，请另存为 UTF-8 后重试。") from last_error
+    if name.endswith(".xlsx"):
+        return pd.read_excel(io.BytesIO(data), engine="openpyxl")
+    raise ValueError("仅支持 CSV / XLSX 文件。")
+
+
+def _prepare_import_frame(
+    df: pd.DataFrame, mapping: dict[str, str]
+) -> pd.DataFrame:
+    canonical = pd.DataFrame({field: df[col] for field, col in mapping.items()})
+    present_required = [
+        field for field in _IMPORT_REQUIRED_FIELDS if field in canonical.columns
+    ]
+    if not present_required:
+        return canonical.iloc[0:0]
+    cleaned = canonical.dropna(subset=present_required).copy()
+    for field in ("库存", "销量", "建议订货", "临期数量"):
+        if field in cleaned.columns:
+            cleaned[field] = pd.to_numeric(cleaned[field], errors="coerce")
+    numeric_required = [
+        field for field in ("库存", "销量") if field in cleaned.columns
+    ]
+    if numeric_required:
+        cleaned = cleaned.dropna(subset=numeric_required)
+    return cleaned.reset_index(drop=True)
+
+
+def _store_import(
+    frame: pd.DataFrame, partial: bool, missing: list[str], filename: str
+) -> None:
+    st.session_state["imported_table"] = frame.copy()
+    st.session_state["imported_meta"] = {
+        "partial": partial,
+        "missing": list(missing),
+        "filename": filename,
+        "imported_at": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"),
+    }
+    st.session_state["use_imported_data"] = True
+
+
+def _render_imported_inventory(imported: pd.DataFrame) -> None:
+    display = pd.DataFrame()
+    if "SKU" in imported.columns:
+        display["店 / SKU"] = imported["SKU"].astype(str)
+    else:
+        display["店 / SKU"] = [f"行 {index + 1}" for index in range(len(imported))]
+    if "库存" in imported.columns:
+        display["现有库存"] = (
+            pd.to_numeric(imported["库存"], errors="coerce").fillna(0).round(2)
+        )
+    if "销量" in imported.columns:
+        display["销量"] = (
+            pd.to_numeric(imported["销量"], errors="coerce").fillna(0).round(2)
+        )
+    if "建议订货" in imported.columns:
+        display["建议订货"] = (
+            pd.to_numeric(imported["建议订货"], errors="coerce")
+            .fillna(0)
+            .round(0)
+            .astype(int)
+        )
+    if "紧急度" in imported.columns:
+        display["紧急度"] = imported["紧急度"].astype(str)
+    if "临期数量" in imported.columns:
+        qty = pd.to_numeric(imported["临期数量"], errors="coerce").fillna(0)
+        display["临期"] = ["是" if value > 0 else "" for value in qty]
+
+    st.markdown(
+        '<div class="import-banner"><span class="import-dot"></span>'
+        f"当前清单：自定义导入数据 · {len(imported):,} 行"
+        '<span class="import-hint">KPI / 预测仍使用系统快照</span></div>',
+        unsafe_allow_html=True,
+    )
+    table_height = min(560, 150 + 46 * len(display))
+    components.html(_fresh_inventory_table_html(display), height=table_height)
+    if st.button("恢复系统数据", key="restore_system_data"):
+        st.session_state["use_imported_data"] = False
+        st.rerun()
+
+
+def _render_data_import() -> None:
+    with st.expander("📁 上传自有数据（支持 CSV / Excel）", expanded=False):
+        st.caption(
+            "至少需要 SKU、库存、销量三列；支持 CSV / XLSX，"
+            "自动识别常见中英文列名与带单位的表头。"
+        )
+        uploaded = st.file_uploader(
+            "选择文件", type=["csv", "xlsx"], key="dashboard_import_file"
+        )
+        if uploaded is not None:
+            try:
+                raw_df = _read_uploaded_table(uploaded)
+            except Exception as exc:
+                st.error(f"文件读取失败：{exc}")
+                raw_df = None
+            if raw_df is not None:
+                if raw_df.empty:
+                    st.warning("文件没有数据行。")
+                else:
+                    st.markdown("**前 5 行预览**")
+                    st.dataframe(
+                        raw_df.head(5), use_container_width=True, hide_index=True
+                    )
+                    mapping = _match_import_columns(raw_df)
+                    missing = [
+                        field
+                        for field in _IMPORT_REQUIRED_FIELDS
+                        if field not in mapping
+                    ]
+                    recognized = list(mapping.keys())
+                    if missing:
+                        st.warning(
+                            "缺少必需列：" + "、".join(missing) + "。"
+                            "已识别列："
+                            + "、".join(recognized if recognized else ["无"])
+                            + "。请检查表头命名。"
+                        )
+                        if st.button("尝试部分导入", key="partial_import_button"):
+                            partial_df = _prepare_import_frame(raw_df, mapping)
+                            if partial_df.empty:
+                                st.error(
+                                    "没有可导入的完整行：已识别字段中存在空值。"
+                                )
+                            else:
+                                _store_import(
+                                    partial_df,
+                                    partial=True,
+                                    missing=missing,
+                                    filename=uploaded.name,
+                                )
+                                st.rerun()
+                    else:
+                        st.success("列校验通过：SKU、库存、销量均已识别。")
+                        if st.button(
+                            "替换当前看板数据",
+                            type="primary",
+                            key="replace_data_button",
+                        ):
+                            full_df = _prepare_import_frame(raw_df, mapping)
+                            if full_df.empty:
+                                st.error(
+                                    "必需字段存在空值，没有可导入的完整行。"
+                                )
+                            else:
+                                _store_import(
+                                    full_df,
+                                    partial=False,
+                                    missing=[],
+                                    filename=uploaded.name,
+                                )
+                                st.rerun()
+
+        imported = st.session_state.get("imported_table")
+        if imported is not None:
+            meta = st.session_state.get("imported_meta", {})
+            st.success(
+                f"当前会话已载入自定义数据：{len(imported):,} 行"
+                + ("（部分导入）" if meta.get("partial") else "")
+            )
+            if meta.get("missing"):
+                st.caption(
+                    "缺失字段："
+                    + "、".join(meta["missing"])
+                    + "；这些列在导入数据中为空。"
+                )
+            if meta.get("filename"):
+                st.caption(
+                    f"来源文件：{meta['filename']} · {meta.get('imported_at', '')}"
+                )
+            st.dataframe(
+                imported.head(10), use_container_width=True, hide_index=True
+            )
+            if st.button("清除导入数据", key="clear_imported_data"):
+                for key in (
+                    "imported_table",
+                    "imported_meta",
+                    "use_imported_data",
+                ):
+                    st.session_state.pop(key, None)
+                st.rerun()
+
+
 def render_fresh_replenishment(
     repl: pd.DataFrame,
     caps: dict[tuple[int, int], dict],
@@ -587,6 +1981,11 @@ def render_fresh_replenishment(
     snapshot: str,
 ) -> None:
     st.markdown("### 库存健康与补货清单")
+    imported = st.session_state.get("imported_table")
+    if imported is not None and st.session_state.get("use_imported_data"):
+        _render_imported_inventory(imported)
+        _render_data_import()
+        return
     st.caption(
         f"共 {len(repl):,} 条序列；库存、订货与紧急度来自补货快照 {snapshot}，页面不重算。"
     )
@@ -599,16 +1998,20 @@ def render_fresh_replenishment(
     urgency_sel = f1.multiselect(
         "紧急度（多选）",
         options=urgency_options,
-        default=urgency_options,
-        key="fresh_urgency_filter",
+        default=[],
+        placeholder="全部紧急度",
+        help="不选择任何标签时展示全部数据",
+        key="fresh_urgency_filter_v2",
     )
     shelf_options = fresh_shelf_options(repl, config)
     shelf_sel = f2.multiselect(
         "保质期档",
         options=shelf_options,
-        default=shelf_options,
+        default=[],
+        placeholder="全部保质期",
+        help="不选择任何标签时展示全部数据",
         format_func=lambda d: f"{int(d)} 天",
-        key="fresh_shelf_filter",
+        key="fresh_shelf_filter_v2",
     )
     expiring_only = f3.checkbox("临期仅看", key="fresh_expiring_only")
     search_raw = f4.text_input(
@@ -621,6 +2024,7 @@ def render_fresh_replenishment(
     view["_label"] = [
         series_label(s, p) for s, p in zip(view["store_id"], view["product_id"])
     ]
+    # 空选择 = 不过滤，保留全部；只有用户主动选的标签才参与过滤。
     if urgency_sel:
         view = view[view["urgency"].isin(urgency_sel)]
     if shelf_sel:
@@ -653,6 +2057,7 @@ def render_fresh_replenishment(
                 "当前筛选条件下没有匹配的序列。可以放宽紧急度或保质期筛选，"
                 "或清空搜索词后重试。"
             )
+        _render_data_import()
         _render_cap_sweep(cap_sweep, config, repl)
         return
 
@@ -679,59 +2084,15 @@ def render_fresh_replenishment(
 
     display = pd.DataFrame(records)
 
-    def _urgency_style(value: object) -> str:
-        styles = {
-            "紧急": "color:#b3261e;background-color:#fdecec;font-weight:600",
-            "建议补货": "color:#b45309;background-color:#fff3e8;font-weight:600",
-            "计划补货": "color:#1c5cab;background-color:#eef4fd;font-weight:600",
-            "正常": "color:#0c6b0c;background-color:#eaf7ea;font-weight:600",
-        }
-        return styles.get(str(value), "")
-
-    def _expiring_style(value: object) -> str:
-        try:
-            expiring = float(value)  # type: ignore[arg-type]
-        except (TypeError, ValueError):
-            return ""
-        return (
-            "color:#b45309;background-color:#fff8ea;font-weight:600"
-            if expiring > 0
-            else ""
-        )
-
-    def _expiring_flag_style(value: object) -> str:
-        return (
-            "color:#b45309;background-color:#fff3e8;font-weight:700"
-            if str(value) == "是"
-            else ""
-        )
-
-    styled = (
-        display.style.map(_urgency_style, subset=["紧急度"])
-        .map(_expiring_style, subset=[f"临期数量（{FRESH_UNIT}）"])
-        .map(_expiring_flag_style, subset=["临期"])
-        .format(
-            {
-                f"现有库存（{FRESH_UNIT}）": "{:.2f}",
-                f"ROP_P90（{FRESH_UNIT}）": "{:.2f}",
-                f"效期修正目标（{FRESH_UNIT}）": "{:.2f}",
-                f"建议订货（{FRESH_UNIT}）": "{:.0f}",
-                f"临期数量（{FRESH_UNIT}）": "{:.2f}",
-            }
-        )
-    )
-    st.dataframe(
-        styled,
-        use_container_width=True,
-        height=500,
-        hide_index=True,
-    )
+    components.html(_fresh_inventory_table_html(display), height=560)
     st.caption(
         f"当前显示 {len(view):,} / {len(repl):,} 条；默认按紧急度、临期数量降序。"
-        "表格支持点击表头排序，最大高度 500px，可在表格内滚动。"
-        f"临期 = 剩余保质期 ≤ {exp_threshold} 天，相关单元格浅黄高亮。"
+        f"库存与订货单位：{FRESH_UNIT}；表格支持点击表头排序，最大高度 500px，可在表格内滚动。"
+        f"临期 = 剩余保质期 ≤ {exp_threshold} 天；相关行浅橙高亮，"
+        f"橙色“临期”标签表示需关注，绿色 ✓ 表示未临期。"
     )
 
+    _render_data_import()
     _render_cap_sweep(cap_sweep, config, repl)
 
 
@@ -1465,7 +2826,23 @@ def _ask_agent(
             "source": source_note,
         }
     )
-    st.rerun()
+
+
+def _render_chat_history(display: list[dict], source_note: str | None) -> None:
+    for i, message in enumerate(display):
+        role = message.get("role", "assistant")
+        with st.chat_message(role):
+            st.markdown(message.get("content", ""))
+            if role == "assistant":
+                note = message.get("source") or source_note
+                if note:
+                    st.caption(note)
+            tools = message.get("tools") or []
+            if role == "assistant" and tools:
+                with st.expander(
+                    "查看工具调用", expanded=(i == len(display) - 1)
+                ):
+                    _tool_call_markdown(tools)
 
 
 def render_chat(
@@ -1491,23 +2868,23 @@ def render_chat(
             {"role": "system", "content": agent.SYSTEM_PROMPT}
         ]
 
-    if not api_key:
-        st.info("未配置 DEEPSEEK_API_KEY，对话功能暂不可用。图表与库存数据不受影响。")
-
     display = st.session_state[display_key]
-    for i, message in enumerate(display):
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-            if message["role"] == "assistant":
-                note = message.get("source") or source_note
-                if note:
-                    st.caption(note)
-            tools = message.get("tools") or []
-            if message["role"] == "assistant" and tools:
-                with st.expander(
-                    "查看工具调用", expanded=(i == len(display) - 1)
-                ):
-                    _tool_call_markdown(tools)
+    # 历史消息先占位，处理完本轮问题后再填充，保证历史始终在输入框上方。
+    history_slot = st.empty()
+
+    if not api_key:
+        with history_slot.container():
+            _render_chat_history(display, source_note)
+        st.caption("⚠️ 未配置 DEEPSEEK_API_KEY，对话功能暂不可用；图表与库存数据不受影响。")
+        st.markdown('<div id="agent-chat-anchor"></div>', unsafe_allow_html=True)
+        st.text_input(
+            "补货 Agent 对话",
+            placeholder="配置 DEEPSEEK_API_KEY 后可对话",
+            disabled=True,
+            key=f"agent_disabled_input_{state_key}",
+            label_visibility="collapsed",
+        )
+        return
 
     quick_cols = st.columns(len(quick_questions))
     quick_question = None
@@ -1516,17 +2893,22 @@ def render_chat(
             label,
             type="secondary",
             use_container_width=True,
-            disabled=not api_key,
             key=f"quick_{state_key}_{label}",
         ):
             quick_question = label
 
-    prompt = st.chat_input(
-        placeholder,
-        disabled=not api_key,
-        key=f"agent_chat_input_{state_key}",
-    )
-    question = prompt or quick_question
+    st.markdown('<div id="agent-chat-anchor"></div>', unsafe_allow_html=True)
+    # 底部常开的普通表单：输入文字不会触发 rerun，只有点击发送才提交。
+    with st.form(f"agent_form_{state_key}", clear_on_submit=True):
+        prompt = st.text_input(
+            "输入问题",
+            placeholder=placeholder,
+            label_visibility="collapsed",
+            key=f"agent_prompt_{state_key}",
+        )
+        sent = st.form_submit_button("发送", use_container_width=True)
+
+    question = prompt.strip() if sent and prompt.strip() else quick_question
 
     # 可选：?ask=... 直接带一个问题进入页面，方便演示/截图
     auto_key = f"auto_asked_{state_key}"
@@ -1538,8 +2920,12 @@ def render_chat(
         if not question:
             question = auto_question
 
-    if question and api_key:
+    if question:
         _ask_agent(question, api_key, store, dataset, state_key, source_note)
+        display = st.session_state[display_key]
+
+    with history_slot.container():
+        _render_chat_history(display, source_note)
 
 
 # ---------------------------------------------------------------------------
@@ -1599,16 +2985,147 @@ def main_dataco() -> None:
 # ---------------------------------------------------------------------------
 # 主流程：生鲜前置仓（默认）
 # ---------------------------------------------------------------------------
+def _render_auth_controls() -> None:
+    """顶栏模拟登录：固定头像按钮 + 浮层登录/账户面板。
+
+    Streamlit 1.30 没有 st.popover，这里用固定定位的浮层复刻同样的交互。
+    """
+    st.session_state.setdefault("auth_logged_in", False)
+    st.session_state.setdefault("auth_panel_open", False)
+    logged_in = bool(st.session_state.auth_logged_in)
+
+    with st.container():
+        clicked = st.button(
+            "店" if logged_in else "👤",
+            key="nav_auth_button",
+            help="登录 / 账户",
+        )
+        st.markdown('<span class="nav-auth-anchor"></span>', unsafe_allow_html=True)
+    if clicked:
+        st.session_state.auth_panel_open = not bool(st.session_state.auth_panel_open)
+        st.rerun()
+
+    if not st.session_state.auth_panel_open:
+        return
+
+    with st.container():
+        st.markdown('<span class="auth-panel-anchor"></span>', unsafe_allow_html=True)
+        if logged_in:
+            account = str(st.session_state.get("auth_account", "店长"))
+            st.markdown(
+                '<div class="auth-panel-title">账户</div>'
+                '<div class="auth-user-row">'
+                '<span class="auth-avatar">店</span>'
+                '<div>'
+                '<div class="auth-user-name">管理员：店长</div>'
+                f'<div class="auth-user-meta">账号：{html.escape(account)}</div>'
+                "</div></div>"
+                '<div class="auth-panel-note">当前为模拟登录状态</div>',
+                unsafe_allow_html=True,
+            )
+            if st.button("退出登录", key="auth_logout", use_container_width=True):
+                for key in (
+                    "auth_logged_in",
+                    "auth_account",
+                    "auth_panel_open",
+                    "auth_username",
+                    "auth_password",
+                ):
+                    st.session_state.pop(key, None)
+                st.rerun()
+        else:
+            with st.form("nav_login_form", clear_on_submit=False):
+                st.markdown(
+                    '<div class="auth-panel-title">登录 · 智链参谋</div>',
+                    unsafe_allow_html=True,
+                )
+                st.caption("演示模式：任意账号密码均可登录")
+                username = st.text_input(
+                    "账号", key="auth_username", placeholder="例如：店长"
+                )
+                password = st.text_input(
+                    "密码", key="auth_password", type="password", placeholder="任意密码"
+                )
+                submitted = st.form_submit_button("登录", use_container_width=True)
+                if submitted:
+                    if username.strip() and password:
+                        st.session_state.auth_logged_in = True
+                        st.session_state.auth_account = username.strip()
+                        st.session_state.auth_panel_open = False
+                        st.rerun()
+                    else:
+                        st.error("请输入账号和密码")
+            if st.button("取消", key="auth_cancel", use_container_width=True):
+                st.session_state.auth_panel_open = False
+                st.rerun()
+
+
+def render_top_navbar(snapshot: str) -> None:
+    """固定顶栏：品牌、页内快捷锚点与模拟登录。
+
+    position: fixed 让它不随内容滚动；跳转目标已设置 scroll-margin-top，
+    因此锚点落位时不会被 60px 的顶栏遮住。
+    """
+    date_text = (
+        snapshot
+        if snapshot and snapshot != SNAPSHOT_FALLBACK
+        else pd.Timestamp.today().strftime("%Y-%m-%d")
+    )
+    st.session_state.setdefault("auth_logged_in", False)
+    auth_label = (
+        '<span class="nav-auth-label">管理员：店长</span>'
+        if st.session_state.get("auth_logged_in")
+        else ""
+    )
+    st.markdown(
+        '<header class="top-navbar">'
+        '<div class="nav-left">'
+        '<span class="nav-logo">ZL</span>'
+        '<span class="nav-brand">智链参谋</span>'
+        "</div>"
+        '<nav class="nav-links" aria-label="页面快捷导航">'
+        '<a href="#section-overview">今日概览</a>'
+        '<a href="#section-inventory">库存健康</a>'
+        '<a href="#section-forecast">7 天预测</a>'
+        '<a href="#section-agent">智能问答</a>'
+        "</nav>"
+        '<div class="nav-right">'
+        '<label class="nav-store">'
+        '<span class="nav-store-label">当前门店</span>'
+        '<span class="nav-store-control">'
+        '<select class="nav-store-select" aria-label="选择当前门店">'
+        "<option>上海浦东前置仓</option>"
+        "<option>杭州滨江前置仓</option>"
+        "<option>苏州工业园前置仓</option>"
+        "</select>"
+        '<span class="nav-store-caret">▾</span>'
+        "</span>"
+        "</label>"
+        f'<span class="nav-date">{html.escape(str(date_text))}</span>'
+        + auth_label
+        + '<span class="nav-auth-slot"></span>'
+        "</div>"
+        "</header>",
+        unsafe_allow_html=True,
+    )
+    _render_auth_controls()
+
+
 def main_fresh() -> None:
     repl = load_csv(FRESH_REPL)
     forecast = load_csv(FRESH_FORECAST)
     comparison = load_csv(FRESH_COMPARISON)
     cap_sweep = load_csv(FRESH_CAP_SWEEP)
     summary = load_csv(FRESH_SUMMARY)
+    metrics = load_csv(FRESH_METRICS)
     config = load_fresh_config()
     snapshot = fresh_snapshot_date(forecast, config)
 
-    render_fresh_header(snapshot)
+    render_top_navbar(snapshot)
+    components.html(
+        _fresh_hero_carousel_html(snapshot, "FreshRetailNet-50K（品类已脱敏）"),
+        height=400,
+    )
 
     if repl is None or repl.empty:
         st.error(
@@ -1619,14 +3136,17 @@ def main_fresh() -> None:
         caps = compute_expiry_caps(repl, forecast, config)
         values = fresh_kpi_values(repl, comparison)
         log_fresh_kpi(values, snapshot)
-        render_fresh_kpi(values, snapshot)
+        render_fresh_kpi(values, snapshot, metrics)
         st.divider()
+        st.markdown('<div id="section-inventory"></div>', unsafe_allow_html=True)
         render_fresh_replenishment(repl, caps, cap_sweep, config, snapshot)
         st.divider()
+        st.markdown('<div id="section-forecast"></div>', unsafe_allow_html=True)
         render_fresh_detail(repl, forecast, summary, config, caps, snapshot)
 
     st.caption("注：销量单位已作展示化处理，底层为归一化销量指数")
     st.divider()
+    st.markdown('<div id="section-agent"></div>', unsafe_allow_html=True)
     api_key = get_agent().load_api_key()
     render_chat(
         api_key,
@@ -1637,6 +3157,433 @@ def main_fresh() -> None:
         placeholder="问生鲜补货问题，例如：SKU 145-802 该补多少？",
         source_note=f"数据来源：补货快照 {snapshot}",
     )
+
+
+def _inject_floating_assistant() -> None:
+    """在父页面右下角注入可拖拽的 AI 助手悬浮球。
+
+    组件 iframe 高度为 0，不参与 Streamlit 布局；CSS/JS 全部作用于
+    window.parent.document，点击后平滑滚动到补货 Agent 输入区域。
+    视觉参考 transparent.png 的玻璃球高光/内旋涡，但使用蓝黑渐变重建，
+    避免依赖外部图片资源。
+    """
+    parent_js = r"""
+        (function () {
+          if (document.getElementById("ai-orb-button")) return;
+          var doc = document;
+          if (!doc || !doc.body) return;
+
+          var style = doc.createElement("style");
+          style.id = "ai-orb-style";
+          style.textContent = `
+            #ai-orb-root {
+              position: fixed;
+              right: 26px;
+              bottom: 26px;
+              width: 60px;
+              height: 60px;
+              z-index: 9999;
+              pointer-events: none;
+            }
+            #ai-orb-root::before {
+              content: "";
+              position: absolute;
+              left: 50%;
+              bottom: -8px;
+              width: 46px;
+              height: 14px;
+              transform: translateX(-50%);
+              border-radius: 50%;
+              background: radial-gradient(ellipse at center,
+                rgba(2, 8, 20, 0.45) 0%,
+                rgba(2, 8, 20, 0.18) 45%,
+                transparent 74%);
+              filter: blur(4px);
+              pointer-events: none;
+            }
+            #ai-orb-button {
+              position: absolute;
+              inset: 0;
+              width: 60px;
+              height: 60px;
+              padding: 0;
+              border: 0;
+              pointer-events: auto;
+              border-radius: 50%;
+              z-index: 9999;
+              cursor: grab;
+              touch-action: none;
+              user-select: none;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              overflow: hidden;
+              background:
+                radial-gradient(circle at 32% 24%,
+                  rgba(255,255,255,.98) 0%,
+                  rgba(177,235,255,.92) 7%,
+                  rgba(84,187,246,.76) 18%,
+                  rgba(30,111,184,.72) 38%,
+                  rgba(7,31,58,.98) 68%,
+                  #02070f 100%);
+              box-shadow:
+                0 12px 34px rgba(0,8,24,.55),
+                0 0 0 1px rgba(126,206,255,.32),
+                0 0 28px rgba(30,111,184,.55);
+              animation: aiOrbBreathe 4.5s ease-in-out infinite;
+              transition: transform .18s ease, box-shadow .18s ease;
+              font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+            }
+            #ai-orb-button::before {
+              content: "";
+              position: absolute;
+              inset: 7px;
+              border-radius: 50%;
+              background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.42), transparent 42%);
+              filter: blur(1px);
+              pointer-events: none;
+            }
+            #ai-orb-button::after {
+              content: "";
+              position: absolute;
+              width: 34px;
+              height: 34px;
+              left: 8px;
+              bottom: 7px;
+              border-radius: 50%;
+              border: 2px solid rgba(109,205,255,.65);
+              border-top-color: rgba(255,255,255,.95);
+              transform: rotate(-35deg);
+              opacity: .72;
+              filter: blur(.25px);
+              pointer-events: none;
+            }
+            #ai-orb-button:hover { transform: scale(1.06); }
+            #ai-orb-button:focus-visible {
+              outline: 2px solid #8fd4ff;
+              outline-offset: 4px;
+            }
+            #ai-orb-button.dragging {
+              cursor: grabbing;
+              animation: none;
+              transform: scale(.97);
+            }
+            #ai-orb-button .ai-orb-icon {
+              position: relative;
+              z-index: 2;
+              color: #eaf8ff;
+              font-size: 20px;
+              line-height: 1;
+              text-shadow: 0 0 12px rgba(125,215,255,.95);
+              pointer-events: none;
+            }
+            #ai-orb-bubble {
+              position: absolute;
+              right: 74px;
+              bottom: 0;
+              z-index: 10000;
+              width: 280px;
+              max-width: calc(100vw - 120px);
+              box-sizing: border-box;
+              padding: 12px 15px;
+              border-radius: 16px;
+              border: 1px solid rgba(126,206,255,.35);
+              background: linear-gradient(135deg, #071b32 0%, #0c3a64 55%, #155b96 100%);
+              box-shadow: 0 18px 44px rgba(0,8,24,.42);
+              color: #eaf7ff;
+              font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+              font-size: 13px;
+              line-height: 1.65;
+              display: flex;
+              align-items: flex-start;
+              gap: 8px;
+              visibility: hidden;
+              opacity: 0;
+              transform: translateY(6px);
+              pointer-events: none;
+              transition: opacity .2s ease, transform .2s ease;
+            }
+            #ai-orb-bubble.show {
+              visibility: visible;
+              opacity: 1;
+              transform: translateY(0);
+              pointer-events: auto;
+            }
+            #ai-orb-root.bubble-right #ai-orb-bubble {
+              right: auto;
+              left: 74px;
+            }
+            #ai-orb-bubble .ai-orb-bubble-icon {
+              color: #8fd4ff;
+              font-size: 15px;
+              line-height: 1.45;
+              flex: 0 0 auto;
+              text-shadow: 0 0 10px rgba(126,206,255,.8);
+            }
+            @keyframes aiOrbBreathe {
+              0%, 100% {
+                box-shadow:
+                  0 12px 34px rgba(0,8,24,.55),
+                  0 0 0 1px rgba(126,206,255,.32),
+                  0 0 28px rgba(30,111,184,.55);
+              }
+              50% {
+                box-shadow:
+                  0 14px 38px rgba(0,8,24,.6),
+                  0 0 0 1px rgba(126,206,255,.4),
+                  0 0 38px rgba(64,162,235,.7);
+              }
+            }
+            @media (prefers-reduced-motion: reduce) {
+              #ai-orb-button { animation: none; transition: none; }
+            }
+          `;
+          (doc.head || doc.documentElement).appendChild(style);
+
+          var root = doc.createElement("div");
+          root.id = "ai-orb-root";
+          doc.body.appendChild(root);
+
+          var orb = doc.createElement("button");
+          orb.id = "ai-orb-button";
+          orb.type = "button";
+          orb.setAttribute("aria-label", "AI 补货助手");
+          orb.innerHTML = '<span class="ai-orb-icon">✦</span>';
+          root.appendChild(orb);
+
+          var bubble = doc.createElement("div");
+          bubble.id = "ai-orb-bubble";
+          bubble.setAttribute("role", "status");
+          bubble.setAttribute("aria-live", "polite");
+          bubble.innerHTML = '<span class="ai-orb-bubble-icon">✦</span><span>你好，我是你的 AI 补货助手，有任何问题随时问我！</span>';
+          root.appendChild(bubble);
+
+          var bubbleTimer = null;
+          var hideTimer = null;
+          var dragging = false;
+          var moved = false;
+          var startX = 0;
+          var startY = 0;
+          var offsetX = 0;
+          var offsetY = 0;
+          var pointerId = null;
+
+          function clamp(value, min, max) {
+            return Math.max(min, Math.min(value, max));
+          }
+
+          function updateBubbleSide() {
+            var r = root.getBoundingClientRect();
+            root.classList.toggle("bubble-right", r.left < 300);
+          }
+
+          function showBubble(autoHideMs) {
+            clearTimeout(bubbleTimer);
+            clearTimeout(hideTimer);
+            bubble.classList.add("show");
+            bubble.style.visibility = "visible";
+            updateBubbleSide();
+            if (autoHideMs) {
+              bubbleTimer = window.setTimeout(hideBubble, autoHideMs);
+            }
+          }
+
+          function hideBubble() {
+            clearTimeout(bubbleTimer);
+            bubble.classList.remove("show");
+            bubble.style.visibility = "hidden";
+          }
+
+          function scrollToAgent() {
+            hideBubble();
+            var input = doc.querySelector('[data-testid="stForm"] input');
+            var anchor = doc.getElementById("agent-chat-anchor");
+            var target = input || anchor;
+            if (target) {
+              target.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+            if (input) {
+              window.setTimeout(function () {
+                try {
+                  input.focus({ preventScroll: true });
+                } catch (e) {}
+              }, 650);
+            }
+          }
+
+          orb.addEventListener("pointerdown", function (e) {
+            if (e.button !== undefined && e.button !== 0) return;
+            e.preventDefault();
+            var r = root.getBoundingClientRect();
+            dragging = true;
+            moved = false;
+            startX = e.clientX;
+            startY = e.clientY;
+            offsetX = e.clientX - r.left;
+            offsetY = e.clientY - r.top;
+            pointerId = e.pointerId;
+            root.style.left = r.left + "px";
+            root.style.top = r.top + "px";
+            root.style.right = "auto";
+            root.style.bottom = "auto";
+            orb.classList.add("dragging");
+            try {
+              orb.setPointerCapture(e.pointerId);
+            } catch (err) {}
+            hideBubble();
+          });
+
+          orb.addEventListener("pointermove", function (e) {
+            if (!dragging) return;
+            e.preventDefault();
+            if (Math.abs(e.clientX - startX) > 4 || Math.abs(e.clientY - startY) > 4) {
+              moved = true;
+            }
+            var x = clamp(
+              e.clientX - offsetX,
+              8,
+              Math.max(8, window.innerWidth - root.offsetWidth - 8)
+            );
+            var y = clamp(
+              e.clientY - offsetY,
+              8,
+              Math.max(8, window.innerHeight - root.offsetHeight - 8)
+            );
+            root.style.left = x + "px";
+            root.style.top = y + "px";
+            updateBubbleSide();
+          });
+
+          function endDrag() {
+            if (!dragging) return;
+            dragging = false;
+            orb.classList.remove("dragging");
+            try {
+              if (pointerId !== null) orb.releasePointerCapture(pointerId);
+            } catch (err) {}
+            pointerId = null;
+            if (!moved) scrollToAgent();
+          }
+
+          orb.addEventListener("pointerup", endDrag);
+          orb.addEventListener("pointercancel", function () {
+            dragging = false;
+            orb.classList.remove("dragging");
+            pointerId = null;
+          });
+          orb.addEventListener("keydown", function (e) {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              scrollToAgent();
+            }
+          });
+
+          orb.addEventListener("mouseenter", function () {
+            showBubble(0);
+          });
+          orb.addEventListener("mouseleave", function () {
+            hideTimer = window.setTimeout(hideBubble, 350);
+          });
+          bubble.addEventListener("mouseenter", function () {
+            clearTimeout(hideTimer);
+          });
+          bubble.addEventListener("mouseleave", function () {
+            hideTimer = window.setTimeout(hideBubble, 250);
+          });
+          window.addEventListener("resize", function () {
+            updateBubbleSide();
+          });
+
+          window.setTimeout(function () {
+            showBubble(3000);
+          }, 400);
+        })();
+        """
+
+    # 把真正的前端代码注入父页面执行，而不是留在这个 components iframe 里。
+    # 这样 Streamlit rerun 重建 iframe 后，悬浮球的事件监听仍然有效。
+    bootstrap = (
+        "<script>(function(){"
+        "var doc=window.parent.document;"
+        "if(!doc||!doc.body)return;"
+        "if(doc.getElementById('ai-orb-button'))return;"
+        "var s=doc.createElement('script');"
+        "s.id='ai-orb-runtime';"
+        "s.textContent=" + json.dumps(parent_js) + ";"
+        "(doc.body||doc.documentElement).appendChild(s);"
+        "})();</script>"
+    )
+    components.html(bootstrap, height=0)
+
+
+def _scroll_page_to_top_once() -> None:
+    """页面首次加载时强制回到顶部，避免缓存滚动位置或输入框聚焦。"""
+    if st.session_state.get("_initial_scroll_fixed"):
+        return
+    st.session_state["_initial_scroll_fixed"] = True
+
+    components.html(
+        """
+        <script>
+        (function () {
+          const doc = window.parent.document;
+          function resetTop() {
+            try {
+              const main =
+                doc.querySelector('section.main') ||
+                doc.querySelector('[data-testid="stMain"]') ||
+                doc.querySelector('[data-testid="stAppViewContainer"]');
+              if (main) main.scrollTop = 0;
+              if (doc.activeElement && doc.activeElement.blur) {
+                doc.activeElement.blur();
+              }
+              window.parent.scrollTo(0, 0);
+              doc.documentElement.scrollTop = 0;
+              if (doc.body) doc.body.scrollTop = 0;
+            } catch (e) {
+              /* 父页面不可访问时静默失败 */
+            }
+          }
+          resetTop();
+          [50, 200, 500].forEach(function (ms) {
+            window.setTimeout(resetTop, ms);
+          });
+        })();
+        </script>
+        """,
+        height=0,
+    )
+
+
+def _render_sidebar_nav() -> None:
+    with st.sidebar:
+        st.markdown(
+            '<div class="side-brand">'
+            '<div class="side-brand-mark">ZL</div>'
+            "<div>"
+            '<div class="side-brand-title">智链参谋</div>'
+            '<div class="side-brand-sub">生鲜前置仓工作台</div>'
+            "</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        if st.session_state.get("source_mode", "fresh") == "dataco":
+            st.caption("当前：制造企业（保底）模式")
+            return
+        st.markdown(
+            '<div class="side-nav-label">工作台导航</div>'
+            '<nav class="side-nav">'
+            '<a href="#section-overview">'
+            '<span class="side-icon">📊</span><span class="side-text">今日概览</span></a>'
+            '<a href="#section-inventory">'
+            '<span class="side-icon">📦</span><span class="side-text">库存健康</span></a>'
+            '<a href="#section-forecast">'
+            '<span class="side-icon">📈</span><span class="side-text">7 天预测</span></a>'
+            '<a href="#section-agent">'
+            '<span class="side-icon">💬</span><span class="side-text">补货 Agent</span></a>'
+            "</nav>",
+            unsafe_allow_html=True,
+        )
 
 
 def _render_source_egg() -> str:
@@ -1682,12 +3629,24 @@ def _render_source_egg() -> str:
 
 
 def main() -> None:
+    _scroll_page_to_top_once()
+    st.session_state.setdefault("source_mode", "fresh")
+    _render_sidebar_nav()
     _agent_backup(get_agent())  # 先留存 DataCo 原工具集，支持来回切换
     source_mode = _render_source_egg()
     if source_mode == "dataco":
         main_dataco()
     else:
         main_fresh()
+
+    st.markdown(
+        '<div class="site-footer">'
+        '<div class="footer-line1">智链参谋 · 生鲜前置仓 AI 补货决策系统</div>'
+        '<div class="footer-line2">全国人工智能应用创新大赛</div>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    _inject_floating_assistant()
 
 
 if __name__ == "__main__":
