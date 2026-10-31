@@ -45,6 +45,7 @@ if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
 import decision_support  # noqa: E402 - 溯源三方案，纯计算模块（不依赖 Streamlit）
+import report_export  # noqa: E402 - Excel / PDF 日报导出
 
 _AGENT = None
 
@@ -498,6 +499,7 @@ div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .s
   font-size: 12px; font-weight: 600; white-space: nowrap;
 }
 .nav-auth-slot { width: 34px; height: 34px; flex: 0 0 auto; }
+.nav-bell-slot { width: 34px; height: 34px; flex: 0 0 auto; }
 
 /* ---------- 顶栏模拟登录（Streamlit 1.30 无 st.popover，用固定浮层实现） ---------- */
 section.main .block-container div[data-testid="element-container"]:has(.nav-auth-anchor),
@@ -613,6 +615,86 @@ div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > 
 .auth-user-name { color: #0B2A4A; font-size: 13.5px; font-weight: 700; }
 .auth-user-meta { color: #7b8fa4; font-size: 11.5px; margin-top: 2px; }
 .auth-panel-note { color: #8a9bb0; font-size: 11.5px; margin: 6px 0 10px; }
+
+/* ---------- 预警中心（顶栏铃铛 + 固定浮层） ---------- */
+section.main .block-container div[data-testid="element-container"]:has(> div[data-testid="stMarkdown"] .notif-bell-anchor),
+section.main .block-container div[data-testid="element-container"]:has(> div[data-testid="stMarkdown"] .notif-panel-anchor) {
+  display: none;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .notif-bell-anchor) {
+  position: fixed !important;
+  top: 13px;
+  right: 72px;
+  width: 34px;
+  height: 34px;
+  z-index: 1000002;
+  padding: 0;
+  margin: 0;
+  gap: 0;
+  background: transparent;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .notif-bell-anchor) div[data-testid="stButton"] {
+  width: 34px;
+  margin: 0;
+  padding: 0;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .notif-bell-anchor) button {
+  width: 34px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  border: 1px solid rgba(255, 255, 255, 0.32) !important;
+  background: rgba(255, 255, 255, 0.10) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(3, 13, 28, 0.28) !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .notif-bell-anchor) button p {
+  color: #ffffff !important;
+  font-size: 13px !important;
+  line-height: 1 !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .notif-bell-anchor) button:hover {
+  background: rgba(255, 255, 255, 0.18) !important;
+}
+.notif-badge {
+  position: fixed;
+  top: 8px;
+  right: 76px;
+  z-index: 1000003;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #D64545;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  box-shadow: 0 0 0 2px #0B2A4A;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .notif-panel-anchor) {
+  position: fixed !important;
+  top: 68px;
+  right: 72px;
+  width: 330px;
+  max-height: 70vh;
+  overflow-y: auto;
+  z-index: 1000003;
+  padding: 16px 18px 18px;
+  border-radius: 16px;
+  border: 1px solid #e7ecf1;
+  background: #ffffff;
+  box-shadow: 0 18px 44px rgba(11, 42, 74, 0.18);
+  gap: 8px;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .notif-panel-anchor) > div[data-testid="element-container"],
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .notif-panel-anchor) div[data-testid="stButton"] {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box;
+}
 
 /* ---------- 全局问 AI 浮层（固定右下角，不打断页面） ---------- */
 section.main .block-container div[data-testid="element-container"]:has(> div[data-testid="stMarkdown"] .global-ai-toggle-anchor),
@@ -3316,12 +3398,33 @@ def _clear_fresh_filters() -> None:
     st.session_state["fresh_sku_search"] = ""
 
 
+@st.cache_data(show_spinner=False, ttl=300)
+def _cached_reports(
+    display: pd.DataFrame,
+    repl: pd.DataFrame,
+    snapshot: str,
+    values: dict,
+    filter_note: str,
+) -> tuple[bytes, bytes | None]:
+    excel = report_export.build_excel_report(
+        display, repl, snapshot, values, filter_note
+    )
+    try:
+        pdf = report_export.build_pdf_report(
+            display, repl, snapshot, values, filter_note
+        )
+    except Exception:
+        pdf = None
+    return excel, pdf
+
+
 def render_fresh_replenishment(
     repl: pd.DataFrame,
     caps: dict[tuple[int, int], dict],
     cap_sweep: pd.DataFrame | None,
     config: dict,
     snapshot: str,
+    values: dict,
 ) -> None:
     st.markdown("### 库存健康与补货清单")
     imported = st.session_state.get("imported_table")
@@ -3410,6 +3513,22 @@ def render_fresh_replenishment(
     if search_raw.strip():
         share_params["q"] = search_raw.strip()
     share_query = urlencode(share_params)
+    filter_parts = []
+    if store_sel:
+        filter_parts.append(f"门店 {store_sel} 号店")
+    if urgency_sel:
+        filter_parts.append("紧急度 " + "/".join(urgency_sel))
+    if shelf_sel:
+        filter_parts.append(
+            "保质期 " + "/".join(f"{int(x)} 天" for x in shelf_sel)
+        )
+    if expiring_only:
+        filter_parts.append("仅看临期")
+    if search_raw.strip():
+        filter_parts.append(f"搜索 {search_raw.strip()}")
+    filter_note = (
+        " · ".join(filter_parts) if filter_parts else "全部门店 / 全部紧急度"
+    )
     view_params = {
         "store": int(store_sel),
         "urgency": list(urgency_sel),
@@ -3573,6 +3692,35 @@ def render_fresh_replenishment(
             )
         else:
             st.caption("还没有保存的视图；保存后会写在本机 output/saved_views.json。")
+
+    excel_bytes, pdf_bytes = _cached_reports(
+        display, repl, snapshot, values, filter_note
+    )
+    report_left, report_right = st.columns(2)
+    with report_left:
+        st.download_button(
+            "导出 Excel 日报",
+            data=excel_bytes,
+            file_name=f"补货日报_{snapshot}.xlsx",
+            mime=(
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            ),
+            key="report_excel",
+            use_container_width=True,
+        )
+    with report_right:
+        if pdf_bytes:
+            st.download_button(
+                "导出 PDF 日报",
+                data=pdf_bytes,
+                file_name=f"补货日报_{snapshot}.pdf",
+                mime="application/pdf",
+                key="report_pdf",
+                use_container_width=True,
+            )
+        else:
+            st.caption("PDF 生成暂不可用")
 
     render_trace_section(view, caps, config)
     render_order_panel(view, snapshot)
@@ -4733,6 +4881,7 @@ def _render_auth_controls() -> None:
         st.markdown('<span class="nav-auth-anchor"></span>', unsafe_allow_html=True)
     if clicked:
         st.session_state.auth_panel_open = not bool(st.session_state.auth_panel_open)
+        st.session_state.notif_open = False
         st.rerun()
 
     if not st.session_state.auth_panel_open:
@@ -4803,6 +4952,77 @@ def _render_auth_controls() -> None:
                 st.rerun()
 
 
+def render_notification_center(
+    repl: pd.DataFrame | None, config: dict, snapshot: str
+) -> None:
+    """顶栏预警铃铛：紧急缺货 + 临期，仅在页面内提醒。"""
+    st.session_state.setdefault("notif_open", False)
+    if repl is None or repl.empty:
+        return
+
+    frame = repl.copy()
+    urgency = frame["urgency"].astype(str)
+    urgent = frame[urgency == "紧急"].copy()
+    expiring = frame[
+        pd.to_numeric(frame["expiring_qty"], errors="coerce").fillna(0) > 0
+    ].copy()
+    urgent = urgent.sort_values(
+        ["suggest_qty", "on_hand"], ascending=[False, True]
+    )
+    expiring = expiring.sort_values("expiring_qty", ascending=False)
+    count = len(urgent) + len(expiring)
+    is_open = bool(st.session_state.notif_open)
+
+    with st.container():
+        st.markdown(
+            '<span class="notif-bell-anchor"></span>', unsafe_allow_html=True
+        )
+        if st.button("🔔", key="notif_bell", help="预警中心"):
+            st.session_state.notif_open = not is_open
+            st.session_state.auth_panel_open = False
+            st.rerun()
+        if count:
+            badge = str(count) if count < 100 else "99+"
+            st.markdown(
+                f'<span class="notif-badge">{badge}</span>',
+                unsafe_allow_html=True,
+            )
+
+    if not is_open:
+        return
+
+    with st.container():
+        st.markdown(
+            '<span class="notif-panel-anchor"></span>', unsafe_allow_html=True
+        )
+        title_col, close_col = st.columns([3, 1])
+        title_col.markdown("**预警中心**")
+        if close_col.button("收起", key="notif_close", use_container_width=True):
+            st.session_state.notif_open = False
+            st.rerun()
+        st.caption(f"数据截至 {snapshot} · 页面内提醒")
+
+        st.markdown(f"**紧急缺货**（{len(urgent)} 条）")
+        if urgent.empty:
+            st.caption("无")
+        else:
+            for row in urgent.head(5).itertuples():
+                st.markdown(
+                    f"- **{series_label(int(row.store_id), int(row.product_id))}** · "
+                    f"在库 {float(row.on_hand):.2f} · 建议 {int(row.suggest_qty)} 件"
+                )
+        st.markdown(f"**临期**（{len(expiring)} 条）")
+        if expiring.empty:
+            st.caption("无")
+        else:
+            for row in expiring.head(5).itertuples():
+                st.markdown(
+                    f"- **{series_label(int(row.store_id), int(row.product_id))}** · "
+                    f"临期 {float(row.expiring_qty):.2f} {FRESH_UNIT}"
+                )
+        st.caption("仅页面内提醒；未接入企业微信/钉钉推送。")
+
+
 def render_top_navbar(snapshot: str) -> None:
     """固定顶栏：品牌、页内快捷锚点与模拟登录。
 
@@ -4851,6 +5071,7 @@ def render_top_navbar(snapshot: str) -> None:
         "</span>"
         f'<span class="nav-date">{html.escape(str(date_text))}</span>'
         + auth_label
+        + '<span class="nav-bell-slot"></span>'
         + '<span class="nav-auth-slot"></span>'
         "</div>"
         "</header>",
@@ -5057,6 +5278,7 @@ def main_fresh() -> None:
     snapshot = fresh_snapshot_date(forecast, config)
 
     render_top_navbar(snapshot)
+    render_notification_center(repl, config, snapshot)
     # 今日简报：页顶晨会播报，数字来自本次已加载的补货表。
     render_daily_brief(repl, snapshot)
     components.html(
@@ -5100,7 +5322,9 @@ def main_fresh() -> None:
                 st.rerun()
         st.divider()
         st.markdown('<div id="section-inventory"></div>', unsafe_allow_html=True)
-        render_fresh_replenishment(repl, caps, cap_sweep, config, snapshot)
+        render_fresh_replenishment(
+            repl, caps, cap_sweep, config, snapshot, values
+        )
         st.divider()
         st.markdown('<div id="section-forecast"></div>', unsafe_allow_html=True)
         render_fresh_detail(repl, forecast, summary, config, caps, snapshot)
