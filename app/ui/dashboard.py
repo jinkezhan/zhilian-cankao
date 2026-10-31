@@ -23,6 +23,7 @@ import re
 import sys
 import time
 from pathlib import Path
+from urllib.parse import urlencode
 
 import pandas as pd
 import streamlit as st
@@ -2272,6 +2273,66 @@ def render_trace_section(
         f"**{series_label(*key)}** · 建议订货 **{row['suggest_qty']:,}** 件"
         f"（紧急度 {row['urgency']}）"
     )
+
+    # 行内问 AI：只针对当前选中的这条序列，不影响下方聊天区。
+    target_eff = (
+        float(cap_info["target_eff"]) if cap_info else float(row["target_level"])
+    )
+    agent = get_agent()
+    api_key = agent.load_api_key()
+    ai_key = f"trace_ai_{key[0]}_{key[1]}"
+    ask_col, hint_col = st.columns([1.15, 4.0])
+    with ask_col:
+        asked = st.button(
+            "问 AI 解释",
+            key=f"trace_ask_{key[0]}_{key[1]}",
+            use_container_width=True,
+            disabled=not api_key,
+        )
+    with hint_col:
+        st.caption(
+            "让 Agent 结合库存、ROP 与效期数据解释这条建议；回答只基于补货数据。"
+            if api_key
+            else "未配置 DEEPSEEK_API_KEY，暂时无法调用。"
+        )
+
+    if asked:
+        question = (
+            f"{series_label(*key)}：现有库存 {row['on_hand']:.2f}，"
+            f"ROP_P90 {row['rop_p90']:.2f}，效期修正目标 {target_eff:.2f}，"
+            f"建议订货 {row['suggest_qty']}。请解释这个订货量是怎么定的，"
+            "并说明不按建议执行的风险。"
+        )
+        with st.spinner("Agent 正在核对数据..."):
+            try:
+                activate_agent_dataset(agent, "freshretail")
+                answer, tools = agent.run_turn(
+                    [
+                        {"role": "system", "content": agent.SYSTEM_PROMPT},
+                        {"role": "user", "content": question},
+                    ],
+                    get_fresh_store(),
+                    api_key,
+                    echo=False,
+                )
+            except agent.AgentError as exc:
+                answer, tools = str(exc), []
+            except Exception:
+                answer, tools = "调用失败，请稍后重试；页面数据不受影响。", []
+        st.session_state[ai_key] = {
+            "answer": answer or "（模型未返回内容）",
+            "tools": tools,
+        }
+
+    cached_ai = st.session_state.get(ai_key)
+    if cached_ai:
+        with st.container(border=True):
+            st.markdown("**AI 解读**")
+            st.markdown(cached_ai.get("answer", ""))
+            if cached_ai.get("tools"):
+                with st.expander("查看工具调用"):
+                    _tool_call_markdown(cached_ai["tools"])
+
     tab_chain, tab_whatif, tab_alpha = st.tabs(
         ["① 这个数怎么算的", "② 不照做会怎样", "③ 分位凭什么定在这"]
     )
@@ -2441,6 +2502,65 @@ def render_decision_log_panel(view: pd.DataFrame, snapshot: str) -> None:
             )
 
 
+def _query_value(name: str, default: str = "") -> str:
+    """兼容 Streamlit 新旧 query_params API，统一返回字符串。"""
+    value = st.query_params.get(name, default)
+    if isinstance(value, list):
+        return value[0] if value else default
+    return default if value is None else str(value)
+
+
+def _share_view_html(query: str) -> str:
+    """分享卡片：把当前筛选条件拼成完整 URL，支持一键复制。"""
+    return f"""
+    <div style="font-family:'Microsoft YaHei','PingFang SC','Segoe UI',sans-serif;
+                color:#0b0b0b;background:#fcfcfb;border:1px solid #e1e0d9;
+                border-radius:12px;padding:12px 14px;">
+      <div style="font-size:11.5px;color:#898781;margin-bottom:8px;">
+        分享链接 · 复制后在新标签页打开，即可恢复当前筛选
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input id="share-url" readonly
+               style="flex:1;min-width:0;height:32px;padding:0 10px;
+                      border:1px solid #e1e0d9;border-radius:8px;
+                      background:#ffffff;color:#0b0b0b;font-size:12px;">
+        <button id="share-copy" type="button"
+                style="height:32px;padding:0 14px;border:0;border-radius:8px;
+                       background:#1E6FB8;color:#ffffff;font-size:12px;
+                       font-weight:600;cursor:pointer;">复制</button>
+      </div>
+      <div id="share-tip" style="font-size:11px;color:#898781;margin-top:6px;">
+        点击“复制”，或手动选中链接复制
+      </div>
+    </div>
+    <script>
+      (function () {{
+        var qs = {json.dumps(query)};
+        var base = window.parent.location.origin + window.parent.location.pathname;
+        var url = base + (qs ? "?" + qs : "");
+        var input = document.getElementById("share-url");
+        var tip = document.getElementById("share-tip");
+        input.value = url;
+        document.getElementById("share-copy").addEventListener("click", function () {{
+          input.focus();
+          input.select();
+          var ok = false;
+          try {{ ok = document.execCommand("copy"); }} catch (e) {{}}
+          if (navigator.clipboard) {{
+            navigator.clipboard.writeText(url).then(function () {{
+              tip.textContent = "已复制到剪贴板";
+            }}).catch(function () {{
+              tip.textContent = ok ? "已复制到剪贴板" : "请手动选中链接复制";
+            }});
+          }} else {{
+            tip.textContent = ok ? "已复制到剪贴板" : "请手动选中链接复制";
+          }}
+        }});
+      }})();
+    </script>
+    """
+
+
 def _clear_fresh_filters() -> None:
     """清空补货清单的全部筛选条件；作为按钮回调，在脚本重跑前执行。"""
     st.session_state["fresh_store_filter"] = 0
@@ -2474,39 +2594,76 @@ def render_fresh_replenishment(
     store_options = sorted(
         {int(x) for x in pd.to_numeric(repl["store_id"], errors="coerce").dropna()}
     )
+    # 分享链接恢复：首次进入会话时把 URL 参数写进 session_state；
+    # 之后始终以 session_state 为准，避免改变控件参数导致选中状态被重置。
+    try:
+        shared_store = int(_query_value("store", "0") or 0)
+    except ValueError:
+        shared_store = 0
+    if shared_store not in store_options:
+        shared_store = 0
+    st.session_state.setdefault("fresh_store_filter", shared_store)
     store_sel = f_store.selectbox(
         "门店",
         options=[0, *store_options],
-        index=0,
         format_func=lambda s: "全部门店" if s == 0 else f"{s} 号店",
         help="仅筛选下方补货清单、溯源与留痕；顶部 KPI 仍为全局总览。",
         key="fresh_store_filter",
     )
     urgency_options = list(URGENCY_RANK.keys())
+    shared_urgency = [
+        item for item in _query_value("urgency").split(",") if item in URGENCY_RANK
+    ]
+    st.session_state.setdefault("fresh_urgency_filter_v2", shared_urgency)
     urgency_sel = f1.multiselect(
         "紧急度（多选）",
         options=urgency_options,
-        default=[],
         placeholder="全部紧急度",
         help="不选择任何标签时展示全部数据",
         key="fresh_urgency_filter_v2",
     )
     shelf_options = fresh_shelf_options(repl, config)
+    shared_shelf: list[int] = []
+    for token in _query_value("shelf").split(","):
+        try:
+            value = int(token)
+        except ValueError:
+            continue
+        if value in shelf_options and value not in shared_shelf:
+            shared_shelf.append(value)
+    st.session_state.setdefault("fresh_shelf_filter_v2", shared_shelf)
     shelf_sel = f2.multiselect(
         "保质期档",
         options=shelf_options,
-        default=[],
         placeholder="全部保质期",
         help="不选择任何标签时展示全部数据",
         format_func=lambda d: f"{int(d)} 天",
         key="fresh_shelf_filter_v2",
     )
+    st.session_state.setdefault(
+        "fresh_expiring_only",
+        _query_value("expiring").lower() in ("1", "true", "yes"),
+    )
     expiring_only = f3.checkbox("临期仅看", key="fresh_expiring_only")
+    st.session_state.setdefault("fresh_sku_search", _query_value("q"))
     search_raw = f4.text_input(
         "按 SKU 搜索",
         placeholder="例如 145-802",
         key="fresh_sku_search",
     )
+
+    share_params: dict[str, str] = {}
+    if store_sel:
+        share_params["store"] = str(store_sel)
+    if urgency_sel:
+        share_params["urgency"] = ",".join(urgency_sel)
+    if shelf_sel:
+        share_params["shelf"] = ",".join(str(int(x)) for x in shelf_sel)
+    if expiring_only:
+        share_params["expiring"] = "1"
+    if search_raw.strip():
+        share_params["q"] = search_raw.strip()
+    share_query = urlencode(share_params)
 
     view = repl.copy()
     view["_label"] = [
@@ -2598,6 +2755,8 @@ def render_fresh_replenishment(
             key="fresh_export_view",
             use_container_width=True,
         )
+    with st.expander("分享当前视图"):
+        components.html(_share_view_html(share_query), height=100)
 
     render_trace_section(view, caps, config)
     render_decision_log_panel(view, snapshot)
@@ -3633,7 +3792,14 @@ def render_top_navbar(snapshot: str) -> None:
         else pd.Timestamp.today().strftime("%Y-%m-%d")
     )
     st.session_state.setdefault("auth_logged_in", False)
-    store_value = int(st.session_state.get("fresh_store_filter", 0) or 0)
+    if "fresh_store_filter" in st.session_state:
+        store_value = int(st.session_state.get("fresh_store_filter") or 0)
+    else:
+        # 分享链接首次打开时，筛选控件尚未实例化，先直接用 URL 参数显示。
+        try:
+            store_value = int(_query_value("store", "0") or 0)
+        except ValueError:
+            store_value = 0
     store_text = "全部门店" if store_value == 0 else f"{store_value} 号店"
     auth_label = (
         '<span class="nav-auth-label">管理员：店长</span>'
