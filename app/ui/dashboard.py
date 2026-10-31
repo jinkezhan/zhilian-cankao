@@ -610,6 +610,105 @@ div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > 
 .auth-user-meta { color: #7b8fa4; font-size: 11.5px; margin-top: 2px; }
 .auth-panel-note { color: #8a9bb0; font-size: 11.5px; margin: 6px 0 10px; }
 
+/* ---------- 全局问 AI 浮层（固定右下角，不打断页面） ---------- */
+section.main .block-container div[data-testid="element-container"]:has(> div[data-testid="stMarkdown"] .global-ai-toggle-anchor),
+section.main .block-container div[data-testid="element-container"]:has(> div[data-testid="stMarkdown"] .global-ai-panel-anchor) {
+  display: none;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .global-ai-toggle-anchor) {
+  position: fixed !important;
+  right: 24px;
+  bottom: 24px;
+  width: 62px;
+  height: 62px;
+  z-index: 1000004;
+  padding: 0;
+  margin: 0;
+  gap: 0;
+  background: transparent;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .global-ai-toggle-anchor) div[data-testid="stButton"] {
+  width: 62px;
+  margin: 0;
+  padding: 0;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .global-ai-toggle-anchor) button {
+  width: 62px !important;
+  height: 62px !important;
+  min-height: 62px !important;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  border: 1px solid rgba(126, 206, 255, 0.35) !important;
+  background:
+    radial-gradient(circle at 32% 24%,
+      rgba(255,255,255,.98) 0%,
+      rgba(177,235,255,.92) 7%,
+      rgba(84,187,246,.76) 18%,
+      rgba(30,111,184,.72) 38%,
+      rgba(7,31,58,.98) 68%,
+      #02070f 100%) !important;
+  color: #eaf8ff !important;
+  box-shadow:
+    0 12px 34px rgba(0,8,24,.45),
+    0 0 0 1px rgba(126,206,255,.32),
+    0 0 26px rgba(30,111,184,.5) !important;
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .global-ai-toggle-anchor) button p {
+  color: #eaf8ff !important;
+  font-size: 22px !important;
+  font-weight: 600 !important;
+  line-height: 1 !important;
+  text-shadow: 0 0 12px rgba(125, 215, 255, .9);
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .global-ai-toggle-anchor) button:hover {
+  transform: scale(1.06);
+  box-shadow:
+    0 14px 38px rgba(0,8,24,.52),
+    0 0 0 1px rgba(126,206,255,.45),
+    0 0 34px rgba(64,162,235,.68) !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .global-ai-panel-anchor) {
+  position: fixed !important;
+  right: 24px;
+  bottom: 98px;
+  width: 390px;
+  max-width: calc(100vw - 48px);
+  max-height: min(72vh, 620px);
+  overflow-y: auto;
+  z-index: 1000004;
+  padding: 16px 18px 18px;
+  border-radius: 18px;
+  border: 1px solid #dce7f3;
+  background: #ffffff;
+  box-shadow: 0 22px 54px rgba(11, 42, 74, 0.22);
+  gap: 10px;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .global-ai-panel-anchor) > div[data-testid="element-container"],
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .global-ai-panel-anchor) > div[data-testid="stForm"],
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .global-ai-panel-anchor) div[data-testid="stButton"],
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .global-ai-panel-anchor) div[data-testid="stFormSubmitButton"] {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .global-ai-panel-anchor) div[data-testid="stForm"] {
+  border: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .global-ai-panel-anchor) [data-testid="stChatMessage"] {
+  background: #f8fbfe !important;
+  border: 1px solid #e7eff8 !important;
+  box-shadow: none !important;
+  padding: 8px 10px !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .global-ai-panel-anchor) [data-testid="chatAvatarIcon-user"],
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .global-ai-panel-anchor) [data-testid="chatAvatarIcon-assistant"] {
+  background: linear-gradient(135deg, #1E6FB8, #4FA3E8) !important;
+  color: #ffffff !important;
+}
+
 @media (max-width: 1280px) {
   .nav-date { display: none; }
 }
@@ -4752,6 +4851,101 @@ def _render_source_egg() -> str:
     return str(st.session_state.source_mode)
 
 
+def render_global_ai(dataset: str) -> None:
+    """全局问 AI 浮层：固定在右下角，输入与回答都在面板内，不跳转页面。"""
+    st.session_state.setdefault("global_ai_open", False)
+    st.session_state.setdefault("global_ai_messages", [])
+    is_open = bool(st.session_state.global_ai_open)
+
+    with st.container():
+        st.markdown(
+            '<span class="global-ai-toggle-anchor"></span>',
+            unsafe_allow_html=True,
+        )
+        if st.button(
+            "×" if is_open else "✦",
+            key="global_ai_toggle",
+            help="全局问 AI：不离开当前页面直接提问",
+        ):
+            st.session_state.global_ai_open = not is_open
+            st.rerun()
+
+    if not is_open:
+        return
+
+    with st.container():
+        st.markdown(
+            '<span class="global-ai-panel-anchor"></span>',
+            unsafe_allow_html=True,
+        )
+        title_col, clear_col = st.columns([3, 1])
+        title_col.markdown("**全局问 AI**")
+        if clear_col.button(
+            "清空", key="global_ai_clear", use_container_width=True
+        ):
+            st.session_state.global_ai_messages = []
+            st.rerun()
+        st.caption("基于当前数据源直接提问，不离开当前页面。")
+
+        history = st.session_state.global_ai_messages
+        if history:
+            for message in history[-4:]:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
+                    tools = message.get("tools") or []
+                    if tools:
+                        with st.expander("工具调用"):
+                            _tool_call_markdown(tools)
+        else:
+            st.caption("例如：今天最该先补哪几条？")
+
+        with st.form("global_ai_form", clear_on_submit=True):
+            prompt = st.text_input(
+                "问题",
+                label_visibility="collapsed",
+                placeholder="问补货问题，例如：SKU 145-802 该补多少？",
+            )
+            sent = st.form_submit_button("发送", use_container_width=True)
+
+        if sent and prompt.strip():
+            agent = get_agent()
+            api_key = agent.load_api_key()
+            if not api_key:
+                st.warning("未配置 DEEPSEEK_API_KEY，无法调用。")
+            else:
+                activate_agent_dataset(agent, dataset)
+                messages = [{"role": "system", "content": agent.SYSTEM_PROMPT}]
+                messages += [
+                    {"role": item["role"], "content": item["content"]}
+                    for item in history
+                ]
+                messages.append({"role": "user", "content": prompt.strip()})
+                store = (
+                    get_fresh_store()
+                    if dataset == "freshretail"
+                    else get_dataco_store()
+                )
+                with st.spinner("Agent 正在核对数据..."):
+                    try:
+                        answer, tools = agent.run_turn(
+                            messages, store, api_key, echo=False
+                        )
+                    except agent.AgentError as exc:
+                        answer, tools = str(exc), []
+                    except Exception:
+                        answer, tools = "调用失败，请稍后重试。", []
+                history.append({"role": "user", "content": prompt.strip()})
+                history.append(
+                    {
+                        "role": "assistant",
+                        "content": answer or "（模型未返回内容）",
+                        "tools": tools,
+                    }
+                )
+                st.session_state.global_ai_messages = history
+                st.rerun()
+
+
 def main() -> None:
     _scroll_page_to_top_once()
     st.session_state.setdefault("source_mode", "fresh")
@@ -4770,7 +4964,7 @@ def main() -> None:
         "</div>",
         unsafe_allow_html=True,
     )
-    _inject_floating_assistant()
+    render_global_ai("dataco" if source_mode == "dataco" else "freshretail")
 
 
 if __name__ == "__main__":
