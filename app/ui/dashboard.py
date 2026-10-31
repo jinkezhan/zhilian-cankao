@@ -25,6 +25,7 @@ import os
 import re
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -5087,11 +5088,8 @@ def render_top_navbar(snapshot: str) -> None:
     position: fixed 让它不随内容滚动；跳转目标已设置 scroll-margin-top，
     因此锚点落位时不会被 60px 的顶栏遮住。
     """
-    date_text = (
-        snapshot
-        if snapshot and snapshot != SNAPSHOT_FALLBACK
-        else pd.Timestamp.today().strftime("%Y-%m-%d")
-    )
+    # 顶栏展示当前系统日期；数据快照日期仍由 Hero/数据状态区单独标注。
+    date_text = datetime.now().strftime("%Y-%m-%d")
     st.session_state.setdefault("auth_logged_in", False)
     if "fresh_store_filter" in st.session_state:
         store_value = int(st.session_state.get("fresh_store_filter") or 0)
