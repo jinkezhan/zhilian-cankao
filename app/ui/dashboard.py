@@ -136,8 +136,8 @@ BLUE_LIGHT = "#86b6ef"
 BLUE_DARK = "#184f95"
 INK = "#0b0b0b"
 SECONDARY = "#52514e"
-MUTED = "#898781"
-GRID = "#e1e0d9"
+MUTED = "#6b7f94"
+GRID = "#DCE7F3"
 AXIS = "#c3c2b7"
 
 CSS = """
@@ -151,7 +151,7 @@ html, body, [class*="css"] {
 /* 主体占满全宽；顶部只留顶栏的 60px，Banner 直接贴住顶栏 */
 section.main .block-container {
   max-width: 100%;
-  padding: 60px 32px 32px;
+  padding: 60px 32px 96px;
 }
 /* 制造企业（保底）模式没有顶栏，不需要预留 60px */
 .stApp:not(:has(.top-navbar)) section.main .block-container { padding-top: 1.2rem; }
@@ -167,14 +167,14 @@ section.main { scroll-behavior: smooth; }
 .brand { color: #0b0b0b; font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
 .subtitle { color: #52514e; font-size: 0.95rem; margin-top: 2px; }
 .snapshot {
-  display: inline-block; background: #ffffff; border: 1px solid #e7ecf1;
+  display: inline-block; background: #ffffff; border: 1px solid #E1EAF4;
   border-radius: 999px; padding: 6px 12px; color: #5f6f82;
   font-size: 0.85rem; white-space: nowrap;
 }
-.topbar-line { border-top: 1px solid #e7ecf1; margin: 6px 0 18px; }
+.topbar-line { border-top: 1px solid #E1EAF4; margin: 6px 0 18px; }
 
 .reco-card {
-  background: #ffffff; border: 1px solid #e7ecf1;
+  background: #ffffff; border: 1px solid #E1EAF4;
   border-radius: 16px; padding: 18px 18px 16px; margin: 10px 0 14px;
   box-shadow: 0 6px 20px rgba(11, 42, 74, .04);
 }
@@ -193,12 +193,12 @@ section.main { scroll-behavior: smooth; }
 .badge-planned { background: #eef4fd; color: #1c5cab; border-color: #cde2fb; }
 .badge-normal { background: #eaf7ea; color: #0c6b0c; border-color: #c9e8c9; }
 .reco-reason { color: #52514e; font-size: 0.86rem; line-height: 1.55; margin-top: 10px; }
-.reco-meta { color: #898781; font-size: 0.8rem; margin-top: 6px; }
+.reco-meta { color: #6b7f94; font-size: 0.8rem; margin-top: 6px; }
 
 .repl-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; color: #0b0b0b; }
 .repl-table th {
   text-align: right; font-weight: 600; color: #52514e; background: #f0efec;
-  padding: 7px 8px; border-bottom: 1px solid #e1e0d9;
+  padding: 7px 8px; border-bottom: 1px solid #DCE7F3;
 }
 .repl-table td {
   text-align: right; padding: 7px 8px; border-bottom: 1px solid #f0efec;
@@ -216,7 +216,7 @@ section.main { scroll-behavior: smooth; }
 
 .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 4px 0 6px; }
 .metric-card {
-  background: #ffffff; border: 1px solid #e7ecf1;
+  background: #ffffff; border: 1px solid #E1EAF4;
   border-radius: 14px; padding: 12px 14px;
   box-shadow: 0 4px 14px rgba(11, 42, 74, .035);
 }
@@ -232,7 +232,7 @@ section.main { scroll-behavior: smooth; }
   gap: 12px; margin: 6px 0 10px;
 }
 .kpi-card {
-  background: #ffffff; border: 1px solid #e7ecf1;
+  background: #ffffff; border: 1px solid #E1EAF4;
   border-radius: 16px; padding: 16px 16px 14px;
   box-shadow: 0 6px 20px rgba(11, 42, 74, .04);
 }
@@ -242,31 +242,44 @@ section.main { scroll-behavior: smooth; }
   line-height: 1.28; margin-top: 5px;
 }
 .kpi-value-sm { font-size: 1.2rem; }
-.kpi-vs { color: #898781; font-size: 0.9rem; font-weight: 500; margin: 0 4px; }
+.kpi-vs { color: #6b7f94; font-size: 0.9rem; font-weight: 500; margin: 0 4px; }
 .kpi-unit { font-size: 0.95rem; font-weight: 500; color: #52514e; margin-left: 3px; }
 .kpi-sub { color: #52514e; font-size: 0.85rem; margin-top: 5px; }
-.kpi-source { color: #898781; font-size: 0.75rem; margin-top: 9px; }
+.kpi-source { color: #6b7f94; font-size: 0.75rem; margin-top: 9px; }
 
 /* ---------- 今日概览：Banner 下方的纯白指标卡 ---------- */
 .overview-dock {
-  margin: 44px 0 40px;
+  margin: 44px 0 18px;
 }
 .ov-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: 1.35fr repeat(3, minmax(0, 1fr));
+  gap: 14px;
 }
 .ov-card {
   padding: 18px 20px 16px;
-  border: 0;
-  border-radius: 12px;
+  border: 1px solid #E1EAF4;
+  border-radius: 16px;
   background: #ffffff;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-  transition: transform .22s ease, box-shadow .22s ease;
+  box-shadow: 0 6px 18px rgba(11, 42, 74, 0.05);
+  transition: transform .16s ease, box-shadow .16s ease;
 }
 .ov-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(11, 42, 74, 0.08);
+}
+.ov-card.ov-primary {
+  padding: 20px 22px 18px;
+  border-color: #F1D4D0;
+  background: linear-gradient(180deg, #FFFFFF 0%, #FFF7F6 100%);
+}
+.ov-primary .ov-value { font-size: 2.9rem; }
+.ov-primary .ov-label { color: #B42318; }
+.ov-primary .ov-unit { color: #B42318; }
+.ov-primary .ov-sub { color: #8A5A55; }
+.ov-primary .ov-dot {
+  background: #D64545;
+  box-shadow: 0 0 0 3px rgba(214, 69, 69, .12);
 }
 .ov-label {
   display: flex; align-items: center; gap: 7px;
@@ -293,13 +306,13 @@ section.main { scroll-behavior: smooth; }
   font-weight: 600;
   letter-spacing: 0;
 }
-.ov-sub { margin-top: 7px; color: #7b8fa4; font-size: 11.5px; line-height: 1.5; }
+.ov-sub { margin-top: 7px; color: #6b7f94; font-size: 11.5px; line-height: 1.5; }
 .ov-alert .ov-label, .ov-alert .ov-value { color: #b3261e; }
 .ov-alert .ov-dot { background: #d64545; box-shadow: 0 0 0 3px rgba(214, 69, 69, .12); }
 .ov-warn .ov-label, .ov-warn .ov-value { color: #b45309; }
 .ov-warn .ov-dot { background: #d98a1f; box-shadow: 0 0 0 3px rgba(217, 138, 31, .14); }
-.ov-foot { margin: 12px 0 0; color: #8a9bb0; font-size: 11.5px; }
-.ov-vs { color: #b0bcc9; font-weight: 500; margin: 0 4px; }
+.ov-foot { margin: 12px 0 0; color: #6b7f94; font-size: 11.5px; }
+.ov-vs { color: #9AA9B8; font-weight: 500; margin: 0 4px; }
 .import-banner {
   display: flex; align-items: center; gap: 8px;
   margin: 4px 0 14px; padding: 10px 14px;
@@ -327,7 +340,7 @@ section.main { scroll-behavior: smooth; }
 
 [data-testid="stMetric"] {
   background: #ffffff;
-  border: 1px solid #e7ecf1;
+  border: 1px solid #E1EAF4;
   border-left: 4px solid #1E6FB8;
   border-radius: 16px;
   padding: 16px 18px;
@@ -433,9 +446,57 @@ div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .s
   background: rgba(143, 212, 255, 0.12);
   box-shadow: inset 0 0 0 1px rgba(143, 212, 255, 0.22);
 }
+.nav-more {
+  display: none;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000001;
+}
+.nav-more summary {
+  list-style: none;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 13.5px;
+  font-weight: 500;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.nav-more summary::-webkit-details-marker { display: none; }
+.nav-more[open] summary {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+.nav-more-panel {
+  position: absolute;
+  top: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 150px;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #0C2F53;
+  box-shadow: 0 14px 34px rgba(3, 13, 28, 0.40);
+}
+.nav-more-panel a {
+  display: block;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: #D5E4F2;
+  text-decoration: none;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.nav-more-panel a:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
 .nav-right {
   display: flex; align-items: center; justify-content: flex-end;
-  gap: 12px;
+  gap: 10px;
   flex: 0 0 auto;
 }
 .nav-store {
@@ -464,6 +525,16 @@ div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .s
   color: #ffffff; font-size: 12.5px; font-weight: 600;
   white-space: nowrap; max-width: 150px;
   overflow: hidden; text-overflow: ellipsis;
+}
+.nav-store-value::before {
+  content: "";
+  display: inline-block;
+  width: 6px; height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #4ADE80;
+  box-shadow: 0 0 6px rgba(74, 222, 128, .7);
+  vertical-align: 1px;
 }
 .nav-store-select {
   appearance: none; -webkit-appearance: none;
@@ -562,7 +633,7 @@ div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > 
   z-index: 1000003;
   padding: 18px 18px 16px;
   border-radius: 16px;
-  border: 1px solid #e7ecf1;
+  border: 1px solid #E1EAF4;
   background: #ffffff;
   box-shadow: 0 18px 44px rgba(11, 42, 74, 0.18);
   gap: 8px;
@@ -583,8 +654,8 @@ div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > 
   width: 12px;
   height: 12px;
   background: #ffffff;
-  border-left: 1px solid #e7ecf1;
-  border-top: 1px solid #e7ecf1;
+  border-left: 1px solid #E1EAF4;
+  border-top: 1px solid #E1EAF4;
   transform: rotate(45deg);
 }
 div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .auth-panel-anchor) div[data-testid="stForm"] {
@@ -614,8 +685,8 @@ div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > 
   box-shadow: 0 4px 12px rgba(30, 111, 184, .25);
 }
 .auth-user-name { color: #0B2A4A; font-size: 13.5px; font-weight: 700; }
-.auth-user-meta { color: #7b8fa4; font-size: 11.5px; margin-top: 2px; }
-.auth-panel-note { color: #8a9bb0; font-size: 11.5px; margin: 6px 0 10px; }
+.auth-user-meta { color: #6b7f94; font-size: 11.5px; margin-top: 2px; }
+.auth-panel-note { color: #6b7f94; font-size: 11.5px; margin: 6px 0 10px; }
 
 /* ---------- 预警中心（顶栏铃铛 + 固定浮层） ---------- */
 section.main .block-container div[data-testid="element-container"]:has(> div[data-testid="stMarkdown"] .notif-bell-anchor),
@@ -685,7 +756,7 @@ div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > 
   z-index: 1000003;
   padding: 16px 18px 18px;
   border-radius: 16px;
-  border: 1px solid #e7ecf1;
+  border: 1px solid #E1EAF4;
   background: #ffffff;
   box-shadow: 0 18px 44px rgba(11, 42, 74, 0.18);
   gap: 8px;
@@ -805,24 +876,22 @@ div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > 
   color: #ffffff !important;
 }
 
-@media (max-width: 1280px) {
-  .nav-date { display: none; }
-}
 @media (max-width: 1020px) {
   .nav-links { display: none; }
+  .nav-more { display: block; }
   .nav-store-label { display: none; }
   .nav-store-select { max-width: 120px; }
 }
 @media (max-width: 900px) {
   .top-navbar { padding: 0 16px; gap: 12px; }
   .nav-links { display: none; }
-  .nav-date { display: none; }
   div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .nav-auth-anchor),
   div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .auth-panel-anchor) {
     right: 16px;
   }
 }
 @media (max-width: 640px) {
+  .nav-date { display: none; }
   .nav-auth-label { display: none; }
   div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .auth-panel-anchor) {
     width: calc(100vw - 32px);
@@ -891,7 +960,7 @@ div[data-testid="stHorizontalBlock"]:has(.source-egg-anchor) > div[data-testid="
   box-shadow: 0 6px 16px rgba(30, 111, 184, .28);
 }
 .side-brand-title { color: #0B2A4A; font-size: 16px; font-weight: 800; line-height: 1.2; }
-.side-brand-sub { color: #7b8fa4; font-size: 10.5px; margin-top: 3px; letter-spacing: .04em; }
+.side-brand-sub { color: #6b7f94; font-size: 10.5px; margin-top: 3px; letter-spacing: .04em; }
 .side-nav-label {
   color: #8399af; font-size: 10.5px; font-weight: 700;
   letter-spacing: .16em; text-transform: uppercase;
@@ -1034,8 +1103,15 @@ div[data-testid="stHorizontalBlock"]:has(.source-egg-anchor) > div[data-testid="
 /* ---------- 数据新鲜度 ---------- */
 .data-status {
   display: flex; justify-content: flex-end; align-items: center;
-  gap: 7px; margin: -6px 2px 18px;
-  color: #8a9bb0; font-size: 11.5px; letter-spacing: .01em;
+  margin: -6px 2px 18px;
+  color: #6b7f94; font-size: 11.5px; letter-spacing: .01em;
+}
+.data-status-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 11px;
+  border: 1px solid #E1EAF4;
+  border-radius: 999px;
+  background: #F6FAFE;
 }
 .data-status .dot {
   width: 6px; height: 6px; border-radius: 50%;
@@ -1055,6 +1131,25 @@ div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > 
   padding: 0 10px;
   font-size: 12px;
   border-radius: 8px;
+}
+section.main .block-container div[data-testid="element-container"]:has(> div[data-testid="stMarkdown"] .pager-anchor) {
+  display: none;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .pager-anchor) {
+  background: #F8FAFD;
+  border: 1px solid #E1EAF4;
+  border-radius: 12px;
+  padding: 8px 12px 10px;
+  margin: 8px 0 4px;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .pager-anchor) div[data-testid="stButton"] button {
+  height: 34px;
+  min-height: 34px;
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .pager-anchor) [data-testid="stSelectbox"] [data-baseweb="select"] {
+  min-height: 34px;
 }
 
 /* ---------- 导出按钮：与工具条同一套视觉 ---------- */
@@ -1372,7 +1467,13 @@ def _fresh_hero_html() -> str:
 
 
 @st.cache_data(show_spinner=False)
-def _fresh_hero_carousel_html(snapshot: str, data_label: str) -> str:
+def _fresh_hero_carousel_html(
+    snapshot: str,
+    data_label: str,
+    urgent: int = 0,
+    expiring: int = 0,
+    suggest_total: int = 0,
+) -> str:
     """生鲜首页三图轮播 Banner（纯 HTML/CSS/JS，无第三方库）。"""
     slides = []
     dots = []
@@ -1408,7 +1509,7 @@ def _fresh_hero_carousel_html(snapshot: str, data_label: str) -> str:
   .hero-carousel {
     position: relative;
     width: 100%;
-    height: 400px;
+    height: 340px;
     overflow: hidden;
     border-radius: 0;
     background: #071b32;
@@ -1470,22 +1571,64 @@ def _fresh_hero_carousel_html(snapshot: str, data_label: str) -> str:
   }
   .hero-copy h1 {
     color: #ffffff;
-    font-size: clamp(24px, 2.6vw, 36px);
+    font-size: clamp(22px, 2.2vw, 30px);
     line-height: 1.28;
     font-weight: 800;
     letter-spacing: .01em;
-    margin: 0 0 14px;
+    margin: 0 0 10px;
     max-width: 980px;
     text-shadow: 0 2px 10px rgba(0, 0, 0, 0.50);
   }
   .hero-copy p {
     color: rgba(255, 255, 255, 0.85);
-    font-size: 15px;
-    line-height: 1.8;
+    font-size: 14px;
+    line-height: 1.7;
     font-weight: 400;
     margin: 0;
     max-width: 880px;
     text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
+  }
+  .hero-action {
+    margin-top: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 9px 12px 9px 16px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(7, 27, 50, 0.42);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.20);
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  .hero-action b {
+    color: #ffffff;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .hero-action-sep { color: rgba(255, 255, 255, 0.34); }
+  .hero-cta {
+    height: 32px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 999px;
+    background: #1E6FB8;
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(30, 111, 184, 0.40);
+    transition: background .15s ease, transform .15s ease;
+  }
+  .hero-cta:hover {
+    background: #2479c4;
+    transform: translateY(-1px);
   }
   .hero-meta {
     position: absolute;
@@ -1549,11 +1692,13 @@ def _fresh_hero_carousel_html(snapshot: str, data_label: str) -> str:
     border-color: #8fd4ff;
   }
   @media (max-width: 760px) {
-    .hero-carousel { height: 380px; }
-    .hero-copy { padding: 24px 20px 50px; }
-    .hero-copy h1 { font-size: 22px; }
-    .hero-copy p { font-size: 13px; }
+    .hero-carousel { height: 320px; }
+    .hero-copy { padding: 22px 18px 48px; }
+    .hero-copy h1 { font-size: 20px; }
+    .hero-copy p { font-size: 12.5px; }
     .hero-kicker { font-size: 9px; }
+    .hero-action { font-size: 11.5px; gap: 6px; padding: 8px 10px 8px 12px; }
+    .hero-cta { height: 30px; font-size: 11.5px; }
     .hero-meta {
       right: 16px; bottom: 18px;
       flex-direction: column; align-items: flex-end; gap: 6px;
@@ -1575,7 +1720,15 @@ def _fresh_hero_carousel_html(snapshot: str, data_label: str) -> str:
     <div class="hero-copy">
       <div class="hero-kicker">FRESH SUPPLY CHAIN · AI REPLENISHMENT</div>
       <h1>智链参谋 · 生鲜前置仓 AI 补货决策系统</h1>
-      <p>数据驱动源头直采，算法锁定新鲜每一刻。让每一份农产品，都能以最新鲜的状态极速送达。</p>
+      <p>数据驱动源头直采 · 算法锁定新鲜每一刻</p>
+      <div class="hero-action">
+        <span><b>__URGENT__</b> 条紧急</span>
+        <span class="hero-action-sep">·</span>
+        <span><b>__EXPIRING__</b> 种临期</span>
+        <span class="hero-action-sep">·</span>
+        <span>建议补货 <b>__SUGGEST__</b> 件</span>
+        <button class="hero-cta" id="hero-cta" type="button">查看补货清单</button>
+      </div>
     </div>
     <div class="hero-meta">
       <span class="hero-pill"><span class="hero-pill-dot"></span>补货快照 __SNAPSHOT__</span>
@@ -1625,6 +1778,16 @@ def _fresh_hero_carousel_html(snapshot: str, data_label: str) -> str:
         });
       });
 
+      var cta = document.getElementById("hero-cta");
+      if (cta) {
+        cta.addEventListener("click", function () {
+          try {
+            var el = window.parent.document.getElementById("section-inventory");
+            if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+          } catch (e) {}
+        });
+      }
+
       var root = document.getElementById("fresh-hero-carousel");
       root.addEventListener("mouseenter", stop);
       root.addEventListener("mouseleave", start);
@@ -1643,6 +1806,9 @@ def _fresh_hero_carousel_html(snapshot: str, data_label: str) -> str:
         .replace("__DOTS__", "".join(dots))
         .replace("__SNAPSHOT__", html.escape(str(snapshot)))
         .replace("__DATA_LABEL__", html.escape(str(data_label)))
+        .replace("__URGENT__", f"{int(urgent):,}")
+        .replace("__EXPIRING__", f"{int(expiring):,}")
+        .replace("__SUGGEST__", f"{int(suggest_total):,}")
     )
 
 
@@ -1697,22 +1863,26 @@ def render_fresh_kpi(
     accuracy = (1.0 - wmape) * 100 if wmape is not None else None
     expiring_qty = float(values["expiring_qty"])
 
+    series = int(values.get("series", 0) or 0)
+    urgent = int(values.get("urgent", 0) or 0)
+    urgent_share = urgent / series if series else 0.0
     cards = [
         {
+            "label": "紧急缺货数",
+            "value": f"{urgent:,}",
+            "unit": "个",
+            "sub": f"占全部序列 {urgent_share:.1%} · 需立即补货",
+            "tone": "ov-alert",
+            "primary": True,
+            "hint": "紧急度 = 紧急的序列数，需立即确认补货",
+        },
+        {
             "label": "总 SKU 数",
-            "value": f"{int(values['series']):,}",
+            "value": f"{series:,}",
             "unit": "个",
             "sub": "纳入分析的店 × SKU 序列",
             "tone": "",
             "hint": "当前纳入分析的店 × SKU 序列数",
-        },
-        {
-            "label": "紧急缺货数",
-            "value": f"{int(values['urgent']):,}",
-            "unit": "个",
-            "sub": "需立即补货的序列",
-            "tone": "ov-alert",
-            "hint": "紧急度 = 紧急的序列数",
         },
         {
             "label": "临期预警数",
@@ -1743,8 +1913,10 @@ def render_fresh_kpi(
     cards_html = []
     for card in cards:
         tone = f" {card['tone']}" if card["tone"] else ""
+        primary = " ov-primary" if card.get("primary") else ""
         cards_html.append(
-            f'<article class="ov-card{tone}" title="{html.escape(card["hint"])}">'
+            f'<article class="ov-card{tone}{primary}" '
+            f'title="{html.escape(card["hint"])}">'
             f'<div class="ov-label"><span class="ov-dot"></span>'
             f'{html.escape(card["label"])}</div>'
             f'<div class="ov-value">{html.escape(card["value"])}'
@@ -3151,22 +3323,22 @@ def _share_view_html(
     """分享卡片：把 query 拼成完整 URL，支持一键复制。"""
     return f"""
     <div style="font-family:'Microsoft YaHei','PingFang SC','Segoe UI',sans-serif;
-                color:#0b0b0b;background:#fcfcfb;border:1px solid #e1e0d9;
-                border-radius:12px;padding:12px 14px;">
-      <div style="font-size:11.5px;color:#898781;margin-bottom:8px;">
+                color:#0b0b0b;background:#FFFFFF;border:1px solid #DCE7F3;
+                border-radius:16px;padding:12px 14px;">
+      <div style="font-size:11.5px;color:#6b7f94;margin-bottom:8px;">
         {html.escape(hint)}
       </div>
       <div style="display:flex;gap:8px;align-items:center;">
         <input id="share-url" readonly
                style="flex:1;min-width:0;height:32px;padding:0 10px;
-                      border:1px solid #e1e0d9;border-radius:8px;
+                      border:1px solid #DCE7F3;border-radius:8px;
                       background:#ffffff;color:#0b0b0b;font-size:12px;">
         <button id="share-copy" type="button"
                 style="height:32px;padding:0 14px;border:0;border-radius:8px;
                        background:#1E6FB8;color:#ffffff;font-size:12px;
                        font-weight:600;cursor:pointer;">复制</button>
       </div>
-      <div id="share-tip" style="font-size:11px;color:#898781;margin-top:6px;">
+      <div id="share-tip" style="font-size:11px;color:#6b7f94;margin-top:6px;">
         点击“复制”，或手动选中链接复制
       </div>
     </div>
@@ -3366,7 +3538,15 @@ def _pager_tokens(current: int, total: int, window: int = 5) -> list:
 def _render_pagination(
     total_rows: int, total_pages: int, current_page: int, page_size: int
 ) -> None:
-    """表格下方的数字分页器：原生按钮，主色高亮当前页。"""
+    """表格下方的数字分页器：浅色工具条 + 原生按钮。"""
+    with st.container():
+        st.markdown('<span class="pager-anchor"></span>', unsafe_allow_html=True)
+        _pager_controls(total_rows, total_pages, current_page, page_size)
+
+
+def _pager_controls(
+    total_rows: int, total_pages: int, current_page: int, page_size: int
+) -> None:
     tokens = _pager_tokens(current_page, total_pages)
     # 末尾留一格，避免右下角悬浮球压住"每页条数"下拉框
     widths = [0.55] + [0.55] * len(tokens) + [0.55, 2.2, 1.15, 0.9]
@@ -3385,7 +3565,7 @@ def _render_pagination(
         if token == "…":
             col.markdown(
                 '<div style="display:flex;align-items:center;'
-                "justify-content:center;height:38px;color:inherit;"
+                "justify-content:center;height:34px;color:inherit;"
                 'opacity:.5;font-size:13px;">…</div>',
                 unsafe_allow_html=True,
             )
@@ -3410,7 +3590,7 @@ def _render_pagination(
     )
     info_col = cols[next_index + 1]
     info_col.markdown(
-        '<div style="display:flex;align-items:center;height:38px;'
+        '<div style="display:flex;align-items:center;height:34px;'
         "font-size:12px;color:inherit;opacity:.65;\">"
         f"第 {current_page} / {total_pages} 页 · 共 {total_rows} 条</div>",
         unsafe_allow_html=True,
@@ -5120,6 +5300,15 @@ def render_top_navbar(snapshot: str) -> None:
         '<a href="#section-forecast">7 天预测</a>'
         '<a href="#section-agent">智能问答</a>'
         "</nav>"
+        '<details class="nav-more">'
+        "<summary>更多</summary>"
+        '<div class="nav-more-panel">'
+        '<a href="#section-overview">今日概览</a>'
+        '<a href="#section-inventory">库存健康</a>'
+        '<a href="#section-forecast">7 天预测</a>'
+        '<a href="#section-agent">智能问答</a>'
+        "</div>"
+        "</details>"
         '<div class="nav-right">'
         '<span class="nav-store">'
         '<span class="nav-store-label">当前门店</span>'
@@ -5184,13 +5373,13 @@ def render_daily_brief(repl: pd.DataFrame | None, snapshot: str) -> None:
         return
     st.markdown(
         '<section role="note" style="display:flex;gap:12px;align-items:flex-start;'
-        "background:#fcfcfb;border:1px solid #e1e0d9;border-left:4px solid #2a78d6;"
-        "border-radius:12px;padding:14px 18px;margin:14px 0 16px;"
-        'box-shadow:0 2px 10px rgba(11,11,11,.04);">'
+        "background:#FFFFFF;border:1px solid #DCE7F3;border-left:4px solid #1E6FB8;"
+        "border-radius:16px;padding:14px 18px;margin:14px 0 16px;"
+        'box-shadow:0 6px 18px rgba(11,42,74,.05);">'
         '<span style="font-size:18px;line-height:1.35;flex:0 0 auto;">☀</span>'
         "<div>"
         '<div style="font-size:11px;font-weight:700;letter-spacing:.12em;'
-        'color:#898781;text-transform:uppercase;margin-bottom:4px;">'
+        'color:#6b7f94;text-transform:uppercase;margin-bottom:4px;">'
         "今日简报 · 晨会播报</div>"
         '<div style="font-size:14.5px;line-height:1.7;color:#0b0b0b;">'
         f"{html.escape(text)}</div>"
@@ -5247,12 +5436,13 @@ def render_data_status(
     )
     st.markdown(
         f'<div class="data-status{warn_class}">'
+        '<span class="data-status-chip">'
         '<span class="dot"></span>'
         f"<span>数据截至 <b>{html.escape(str(snapshot))}</b>"
         f" · 快照生成 {html.escape(updated)}"
         f"{refresh_note}"
         f" · {html.escape(detail)}</span>"
-        "</div>",
+        "</span></div>",
         unsafe_allow_html=True,
     )
 
@@ -5332,14 +5522,37 @@ def main_fresh() -> None:
     metrics = load_csv(FRESH_METRICS)
     config = load_fresh_config()
     snapshot = fresh_snapshot_date(forecast, config)
+    if repl is not None and not repl.empty:
+        values = fresh_kpi_values(repl, comparison)
+        suggest_total = int(
+            pd.to_numeric(repl["suggest_qty"], errors="coerce").fillna(0).sum()
+        )
+    else:
+        values = {
+            "series": 0,
+            "urgent": 0,
+            "advised": 0,
+            "expiring_qty": 0.0,
+            "expiring_series": 0,
+            "short_shelf": None,
+            "spoilage_c": None,
+            "spoilage_b": None,
+        }
+        suggest_total = 0
 
     render_top_navbar(snapshot)
     render_notification_center(repl, config, snapshot)
     # 今日简报：页顶晨会播报，数字来自本次已加载的补货表。
     render_daily_brief(repl, snapshot)
     components.html(
-        _fresh_hero_carousel_html(snapshot, "FreshRetailNet-50K（品类已脱敏）"),
-        height=400,
+        _fresh_hero_carousel_html(
+            snapshot,
+            "FreshRetailNet-50K（品类已脱敏）",
+            int(values["urgent"]),
+            int(values["expiring_series"]),
+            suggest_total,
+        ),
+        height=340,
     )
 
     if repl is None or repl.empty:
@@ -5349,10 +5562,9 @@ def main_fresh() -> None:
         )
     else:
         caps = compute_expiry_caps(repl, forecast, config)
-        values = fresh_kpi_values(repl, comparison)
         log_fresh_kpi(values, snapshot)
         render_fresh_kpi(values, snapshot, metrics)
-        status_col, refresh_col = st.columns([5.7, 1.0])
+        status_col, refresh_col, _data_spacer = st.columns([6.0, 0.5, 0.5])
         with status_col:
             render_data_status(repl, forecast, config, snapshot)
         with refresh_col:
@@ -5361,9 +5573,9 @@ def main_fresh() -> None:
                 unsafe_allow_html=True,
             )
             if st.button(
-                "刷新数据",
+                "↻",
                 key="fresh_refresh_data",
-                help="重新读取 output/ 下的 CSV 与配置",
+                help="刷新数据：重新读取 output/ 下的 CSV 与配置",
                 use_container_width=True,
             ):
                 load_csv.clear()
