@@ -626,6 +626,9 @@ div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > 
   margin: 0;
   gap: 0;
   background: transparent;
+  /* 拖拽球是可见入口；这个原生按钮只保留给 JS 触发，不显示 */
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .global-ai-toggle-anchor) div[data-testid="stButton"] {
   width: 62px;
@@ -696,6 +699,12 @@ div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > 
   border: 0 !important;
   padding: 0 !important;
   background: transparent !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .global-ai-panel-anchor) div[data-testid="stButton"] button {
+  height: 32px;
+  min-height: 32px;
+  padding: 0 8px;
+  font-size: 12px;
 }
 div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .global-ai-panel-anchor) [data-testid="stChatMessage"] {
   background: #f8fbfe !important;
@@ -4617,20 +4626,32 @@ def _inject_floating_assistant() -> None:
             bubble.style.visibility = "hidden";
           }
 
-          function scrollToAgent() {
+          function openAssistant() {
             hideBubble();
+            // 点击拖拽球 = 打开/收起全局 AI 面板（隐藏的 Streamlit 按钮负责状态切换）。
+            var marker = doc.querySelector(".global-ai-toggle-anchor");
+            var block = marker
+              ? marker.closest('[data-testid="stVerticalBlock"]')
+              : null;
+            var toggle = block ? block.querySelector("button") : null;
+            if (!toggle) {
+              toggle = Array.prototype.slice
+                .call(doc.querySelectorAll("button"))
+                .find(function (b) {
+                  var text = (b.innerText || "").trim();
+                  return text === "✦" || text === "×";
+                });
+            }
+            if (toggle) {
+              toggle.click();
+              return;
+            }
+            // 兜底：面板尚未渲染时，滚到主聊天区。
             var input = doc.querySelector('[data-testid="stForm"] input');
             var anchor = doc.getElementById("agent-chat-anchor");
             var target = input || anchor;
             if (target) {
               target.scrollIntoView({ behavior: "smooth", block: "center" });
-            }
-            if (input) {
-              window.setTimeout(function () {
-                try {
-                  input.focus({ preventScroll: true });
-                } catch (e) {}
-              }, 650);
             }
           }
 
@@ -4685,7 +4706,7 @@ def _inject_floating_assistant() -> None:
               if (pointerId !== null) orb.releasePointerCapture(pointerId);
             } catch (err) {}
             pointerId = null;
-            if (!moved) scrollToAgent();
+            if (!moved) openAssistant();
           }
 
           orb.addEventListener("pointerup", endDrag);
@@ -4697,7 +4718,7 @@ def _inject_floating_assistant() -> None:
           orb.addEventListener("keydown", function (e) {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
-              scrollToAgent();
+              openAssistant();
             }
           });
 
@@ -4878,12 +4899,17 @@ def render_global_ai(dataset: str) -> None:
             '<span class="global-ai-panel-anchor"></span>',
             unsafe_allow_html=True,
         )
-        title_col, clear_col = st.columns([3, 1])
+        title_col, clear_col, close_col = st.columns([2.2, 0.9, 0.9])
         title_col.markdown("**全局问 AI**")
         if clear_col.button(
             "清空", key="global_ai_clear", use_container_width=True
         ):
             st.session_state.global_ai_messages = []
+            st.rerun()
+        if close_col.button(
+            "收起", key="global_ai_close", use_container_width=True
+        ):
+            st.session_state.global_ai_open = False
             st.rerun()
         st.caption("基于当前数据源直接提问，不离开当前页面。")
 
@@ -4965,6 +4991,7 @@ def main() -> None:
         unsafe_allow_html=True,
     )
     render_global_ai("dataco" if source_mode == "dataco" else "freshretail")
+    _inject_floating_assistant()
 
 
 if __name__ == "__main__":
