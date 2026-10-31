@@ -1685,21 +1685,23 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
 <style>
   * { box-sizing: border-box; }
   html, body {
-    margin: 0; padding: 0; width: 100%; min-height: 100%;
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    overflow-x: hidden;
     background: #f8f9fa;
     font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
     color: #334155;
   }
   .table-scroll {
     width: 100%;
-    max-height: 500px;
-    overflow: auto;
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
     border-radius: 14px;
-    padding: 2px 3px 4px;
+    padding: 0 0 4px;
   }
   table.fresh-card-table {
     width: 100%;
-    min-width: 1040px;
+    min-width: 0;
     table-layout: fixed;
     border-collapse: separate;
     border-spacing: 0 8px;
@@ -1710,6 +1712,7 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
     top: 0;
     z-index: 5;
     background: linear-gradient(180deg, #0E3A63, #0B2F52);
+    background-clip: padding-box;
     color: #EAF3FB;
     font-size: 11.5px;
     font-weight: 600;
@@ -1721,8 +1724,8 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
     user-select: none;
   }
   thead th[data-type="num"] { text-align: right; }
-  thead th:first-child { border-radius: 9px 0 0 9px; }
-  thead th:last-child { border-radius: 0 9px 9px 0; }
+  thead th:first-child { border-radius: 10px 0 0 10px; }
+  thead th:last-child { border-radius: 0 10px 10px 0; }
   thead th.sorted-asc::after { content: " ▲"; color: #8FD4FF; font-size: 10px; }
   thead th.sorted-desc::after { content: " ▼"; color: #8FD4FF; font-size: 10px; }
   thead th:focus-visible {
@@ -1765,6 +1768,22 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
   .badge-expiring { color: #B45309; background: #FFF3E8; }
   .badge-muted { color: #475569; background: #E2E8F0; }
   .expiry-ok { color: #2E9E5B; font-size: 13px; font-weight: 700; }
+  @media (max-width: 900px) {
+    table.fresh-card-table { font-size: 11.5px; }
+    thead th { padding: 9px 6px; font-size: 10.5px; }
+    tbody td { padding: 10px 6px; }
+    .badge { padding: 4px 8px; font-size: 11px; }
+    .badge::before { width: 5px; height: 5px; }
+    /* 窄屏重新分配列宽：给紧急度/临期留足空间，数值列等分剩余 */
+    col:nth-child(1) { width: 18% !important; }
+    col:nth-child(2),
+    col:nth-child(3),
+    col:nth-child(4),
+    col:nth-child(5),
+    col:nth-child(7) { width: 11.3% !important; }
+    col:nth-child(6) { width: 15% !important; }
+    col:nth-child(8) { width: 10.5% !important; }
+  }
 </style>
 </head>
 <body>
@@ -2742,7 +2761,7 @@ def render_fresh_replenishment(
     with caption_col:
         st.caption(
             f"当前显示 {len(view):,} / {len(repl):,} 条；默认按紧急度、临期数量降序。"
-            f"库存与订货单位：{FRESH_UNIT}；表格支持点击表头排序，最大高度 500px，可在表格内滚动。"
+            f"库存与订货单位：{FRESH_UNIT}；表格支持点击表头排序，表头固定，可在表格内滚动。"
             f"临期 = 剩余保质期 ≤ {exp_threshold} 天；相关行浅橙高亮，"
             f"橙色“临期”标签表示需关注，绿色 ✓ 表示未临期。"
         )
