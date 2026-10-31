@@ -959,6 +959,16 @@ div[data-testid="stHorizontalBlock"]:has(.source-egg-anchor) > div[data-testid="
   background: #D98A1F; box-shadow: 0 0 6px rgba(217, 138, 31, .45);
 }
 .data-status b { color: #6b7f94; font-weight: 600; }
+section.main .block-container div[data-testid="element-container"]:has(> div[data-testid="stMarkdown"] .data-refresh-anchor) {
+  display: none;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .data-refresh-anchor) div[data-testid="stButton"] button {
+  height: 30px;
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+  border-radius: 8px;
+}
 
 /* ---------- 导出按钮：与工具条同一套视觉 ---------- */
 div[data-testid="stDownloadButton"] button {
@@ -988,7 +998,7 @@ st.markdown(CSS, unsafe_allow_html=True)
 # ---------------------------------------------------------------------------
 # 数据加载（只读、缓存）
 # ---------------------------------------------------------------------------
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300)
 def load_csv(name: str) -> pd.DataFrame | None:
     path = OUTPUT_DIR / name
     if not path.exists():
@@ -999,7 +1009,7 @@ def load_csv(name: str) -> pd.DataFrame | None:
         return None
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300)
 def load_fresh_config() -> dict:
     if not CONFIG_PATH.exists():
         return {}
@@ -4262,11 +4272,16 @@ def render_data_status(
         detail = "预测表序列数与补货快照不一致"
 
     warn_class = "" if series_ok and forecast_ok else " warn"
+    refreshed = st.session_state.get("fresh_data_refreshed_at")
+    refresh_note = (
+        f" · 页面刷新 {html.escape(str(refreshed))}" if refreshed else ""
+    )
     st.markdown(
         f'<div class="data-status{warn_class}">'
         '<span class="dot"></span>'
         f"<span>数据截至 <b>{html.escape(str(snapshot))}</b>"
         f" · 快照生成 {html.escape(updated)}"
+        f"{refresh_note}"
         f" · {html.escape(detail)}</span>"
         "</div>",
         unsafe_allow_html=True,
@@ -4367,7 +4382,30 @@ def main_fresh() -> None:
         values = fresh_kpi_values(repl, comparison)
         log_fresh_kpi(values, snapshot)
         render_fresh_kpi(values, snapshot, metrics)
-        render_data_status(repl, forecast, config, snapshot)
+        status_col, refresh_col = st.columns([5.7, 1.0])
+        with status_col:
+            render_data_status(repl, forecast, config, snapshot)
+        with refresh_col:
+            st.markdown(
+                '<span class="data-refresh-anchor"></span>',
+                unsafe_allow_html=True,
+            )
+            if st.button(
+                "刷新数据",
+                key="fresh_refresh_data",
+                help="重新读取 output/ 下的 CSV 与配置",
+                use_container_width=True,
+            ):
+                load_csv.clear()
+                load_fresh_config.clear()
+                get_fresh_store.clear()
+                get_dataco_store.clear()
+                st.session_state.pop("fresh_kpi_logged", None)
+                st.session_state["fresh_data_refreshed_at"] = (
+                    pd.Timestamp.now().strftime("%H:%M:%S")
+                )
+                st.toast("已重新读取数据文件")
+                st.rerun()
         st.divider()
         st.markdown('<div id="section-inventory"></div>', unsafe_allow_html=True)
         render_fresh_replenishment(repl, caps, cap_sweep, config, snapshot)
