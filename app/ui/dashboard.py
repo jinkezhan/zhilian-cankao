@@ -2546,34 +2546,152 @@ def render_trace_section(
         _trace_alpha(row["shelf_life_days"])
 
 
-_DECISION_LOG_FIELDS = (
-    "decided_at",
+DECISION_ITEMS_PATH = OUTPUT_DIR / "decision_items.csv"
+DECISION_BATCHES_PATH = OUTPUT_DIR / "decision_batches.csv"
+_DECISION_ITEM_FIELDS = (
+    "batch_id",
+    "created_at",
     "snapshot_date",
-    "ratio",
-    "series_count",
-    "suggest_total",
-    "applied_total",
+    "store_id",
+    "product_id",
+    "shelf_life_days",
+    "urgency",
+    "on_hand",
+    "rop_p90",
+    "suggest_qty",
+    "applied_ratio",
+    "applied_qty",
+    "status",
     "operator",
+    "note",
+)
+_DECISION_BATCH_FIELDS = (
+    "batch_id",
+    "action",
+    "status",
+    "at",
+    "operator",
+    "item_count",
+    "total_qty",
     "note",
 )
 
 
-def render_decision_log_panel(view: pd.DataFrame, snapshot: str) -> None:
-    """功能 3：按比例确认一次，往 output/decision_log.csv 追加一条操作记录。
+def _empty_decision_items() -> pd.DataFrame:
+    return pd.DataFrame(columns=_DECISION_ITEM_FIELDS)
 
-    独立代码块，只新增一段控件；不改表格、轮播图与顶栏。
-    """
+
+def _load_decision_items() -> pd.DataFrame:
+    if not DECISION_ITEMS_PATH.exists():
+        return _empty_decision_items()
+    try:
+        frame = pd.read_csv(DECISION_ITEMS_PATH, encoding="utf-8-sig")
+    except Exception:
+        return _empty_decision_items()
+    for column in _DECISION_ITEM_FIELDS:
+        if column not in frame.columns:
+            frame[column] = ""
+    return frame[list(_DECISION_ITEM_FIELDS)]
+
+
+def _save_decision_items(frame: pd.DataFrame) -> None:
+    DECISION_ITEMS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(DECISION_ITEMS_PATH, index=False, encoding="utf-8-sig")
+
+
+def _load_batch_events() -> pd.DataFrame:
+    if not DECISION_BATCHES_PATH.exists():
+        return pd.DataFrame(columns=_DECISION_BATCH_FIELDS)
+    try:
+        return pd.read_csv(DECISION_BATCHES_PATH, encoding="utf-8-sig")
+    except Exception:
+        return pd.DataFrame(columns=_DECISION_BATCH_FIELDS)
+
+
+def _append_batch_event(
+    batch_id: str,
+    action: str,
+    status: str,
+    operator: str,
+    item_count: int,
+    total_qty: int,
+    note: str = "",
+) -> None:
+    row = {
+        "batch_id": batch_id,
+        "action": action,
+        "status": status,
+        "at": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "operator": operator,
+        "item_count": int(item_count),
+        "total_qty": int(total_qty),
+        "note": note,
+    }
+    decision_support.append_rows(
+        DECISION_BATCHES_PATH, [row], _DECISION_BATCH_FIELDS
+    )
+
+
+def _new_batch_id() -> str:
+    stamp = pd.Timestamp.now().strftime("%Y%m%d%H%M%S")
+    return f"{stamp}-{hashlib.md5(os.urandom(4)).hexdigest()[:4]}"
+
+
+def _latest_batch(
+    items: pd.DataFrame,
+) -> tuple[str, pd.DataFrame, str] | None:
+    if items is None or items.empty:
+        return None
+    batch_id = str(items["batch_id"].astype(str).max())
+    sub = items[items["batch_id"].astype(str) == batch_id]
+    if sub.empty:
+        return None
+    return batch_id, sub, str(sub["status"].iloc[-1])
+
+
+def _update_batch_status(
+    batch_id: str,
+    new_status: str,
+    operator: str,
+    action: str,
+) -> int:
+    frame = _load_decision_items()
+    mask = frame["batch_id"].astype(str) == batch_id
+    if not mask.any():
+        return 0
+    frame.loc[mask, "status"] = new_status
+    _save_decision_items(frame)
+    sub = frame[mask]
+    total = int(
+        pd.to_numeric(sub["applied_qty"], errors="coerce").fillna(0).sum()
+    )
+    _append_batch_event(
+        batch_id,
+        action,
+        new_status,
+        operator,
+        len(sub),
+        total,
+        note=f"{batch_id} -> {new_status}",
+    )
+    return len(sub)
+
+
+def render_order_panel(view: pd.DataFrame, snapshot: str) -> None:
+    """逐 SKU 补货单：加入 → 确认 → 审批 → 下单 → 到货，支持导出与撤销。"""
     st.divider()
-    st.markdown("#### 决策留痕")
+    st.markdown("#### 补货单与审批")
     st.caption(
-        "按当前筛选范围留一条操作记录，追加写入 output/decision_log.csv；"
-        "不覆盖历史，60 秒内重复点击不会重复写入。"
+        "逐 SKU 加入补货单 → 确认 → 审批 → 下单 → 到货；"
+        "支持导出采购单与撤销，所有动作写入批次审计。"
     )
     if view is None or view.empty:
-        st.info("当前筛选没有可记录的序列。")
+        st.info("当前筛选没有可加入补货单的序列。")
         return
 
     can_write = _can_write_decisions()
+    can_approve = _current_role() == "admin"
+    operator = str(st.session_state.get("auth_account", "店长") or "店长")
     ratio_labels = {
         0.5: "半量（0.5 倍）",
         0.75: "七五折（0.75 倍）",
@@ -2581,78 +2699,291 @@ def render_decision_log_panel(view: pd.DataFrame, snapshot: str) -> None:
         1.25: "加一成（1.25 倍）",
         1.5: "加五成（1.5 倍）",
     }
-    c_ratio, c_operator, c_summary, c_btn = st.columns([1.2, 1.1, 1.6, 1.2])
+    c_ratio, c_meta = st.columns([1.2, 2.6])
     ratio = c_ratio.selectbox(
-        "执行比例",
+        "本次下单比例",
         options=[1.0, 0.75, 1.25, 0.5, 1.5],
         format_func=lambda x: ratio_labels.get(x, f"{x:.2f} 倍"),
-        key="decision_ratio",
+        key="order_ratio",
     )
-    default_operator = str(st.session_state.get("auth_account", "店长") or "店长")
-    operator = c_operator.text_input(
-        "操作人", value=default_operator, key="decision_operator"
-    )
-
-    suggest = pd.to_numeric(view["suggest_qty"], errors="coerce").fillna(0).astype(int)
-    # 与逐行留痕同口径：每行先四舍五入再求和，避免非 1.0 倍时合计对不上。
-    applied_total = int(sum(math.floor(q * float(ratio) + 0.5) for q in suggest))
-    suggest_total = int(suggest.sum())
-    c_summary.markdown(
-        f"本次记录 **{len(view):,}** 条序列，合计 **{applied_total:,}** 件"
-        f"（建议 {suggest_total:,} 件，差 {applied_total - suggest_total:+,}）"
-    )
-    clicked = c_btn.button(
-        "确认执行",
-        type="primary",
-        key="decision_confirm",
-        use_container_width=True,
-        disabled=not can_write,
+    c_meta.caption(
+        f"操作人：{operator} · 当前角色：{_role_label(_current_role())}"
     )
     if not can_write:
-        if st.session_state.get("auth_logged_in"):
-            st.caption(
-                f"当前角色为{_role_label(_current_role())}，"
-                "写入决策留痕需要计划员或管理员权限。"
-            )
-        else:
-            st.caption("写入决策留痕需要登录：请点击右上角头像。")
+        st.caption("查看者只能查看批次与导出采购单；加入/确认需要计划员或管理员。")
 
-    log_path = OUTPUT_DIR / "decision_log.csv"
-    if clicked:
-        now_ts = time.time()
-        last_ts = float(st.session_state.get("decision_last_ts", 0.0))
-        if now_ts - last_ts < 60:
-            st.warning(
-                "60 秒内刚刚记录过一次，本次未重复写入，避免同一单被记两遍。"
-            )
-        else:
-            record = {
-                "decided_at": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "snapshot_date": snapshot,
-                "ratio": float(ratio),
-                "series_count": int(len(view)),
-                "suggest_total": suggest_total,
-                "applied_total": applied_total,
-                "operator": operator.strip() or "店长",
-                "note": "按当前筛选范围整单确认",
+    rows_by_key = {
+        (int(row.store_id), int(row.product_id)): row
+        for row in view.itertuples()
+        if int(row.suggest_qty) > 0
+    }
+    if not rows_by_key:
+        st.info("当前筛选里没有建议订货量大于 0 的序列。")
+        return
+
+    cart: dict[str, dict] = st.session_state.setdefault("order_cart", {})
+
+    def add_to_cart(key: tuple[int, int], row) -> int:
+        applied = int(math.floor(int(row.suggest_qty) * float(ratio) + 0.5))
+        cart[f"{key[0]}-{key[1]}"] = {
+            "store_id": key[0],
+            "product_id": key[1],
+            "shelf_life_days": int(row.shelf_life_days),
+            "urgency": str(row.urgency),
+            "on_hand": float(row.on_hand),
+            "rop_p90": float(row.rop_p90),
+            "suggest_qty": int(row.suggest_qty),
+            "applied_ratio": float(ratio),
+            "applied_qty": applied,
+        }
+        return applied
+
+    add_col, add_btn = st.columns([3.2, 1.0])
+    selected = add_col.selectbox(
+        "选择 SKU 加入补货单",
+        options=list(rows_by_key),
+        index=None,
+        format_func=lambda key: (
+            f"{series_label(*key)} · {rows_by_key[key].urgency} · "
+            f"建议 {int(rows_by_key[key].suggest_qty)}"
+        ),
+        placeholder="选择一条序列",
+        key="order_add_sku",
+    )
+    if add_btn.button(
+        "加入补货单",
+        key="order_add_btn",
+        use_container_width=True,
+        disabled=not can_write or selected is None,
+    ) and selected is not None:
+        applied = add_to_cart(selected, rows_by_key[selected])
+        st.session_state["order_cart"] = cart
+        st.toast(f"已加入 {series_label(*selected)}：{applied} 件")
+        st.rerun()
+
+    bulk_col, clear_col = st.columns([3.2, 1.0])
+    if bulk_col.button(
+        f"整单加入当前筛选（{len(rows_by_key)} 条）",
+        key="order_add_all",
+        use_container_width=True,
+        disabled=not can_write,
+    ):
+        for key, row in rows_by_key.items():
+            add_to_cart(key, row)
+        st.session_state["order_cart"] = cart
+        st.toast(f"已加入 {len(rows_by_key)} 条序列")
+        st.rerun()
+    if clear_col.button(
+        "清空补货单",
+        key="order_clear",
+        use_container_width=True,
+        disabled=not cart,
+    ):
+        st.session_state["order_cart"] = {}
+        st.rerun()
+
+    cart = st.session_state.get("order_cart", {})
+    if cart:
+        cart_rows = [
+            {
+                "店 / SKU": series_label(
+                    int(item["store_id"]), int(item["product_id"])
+                ),
+                "建议量": int(item["suggest_qty"]),
+                "下单量": int(item["applied_qty"]),
+                "比例": f"{float(item['applied_ratio']):.2f}",
             }
-            written = decision_support.append_rows(
-                log_path, [record], _DECISION_LOG_FIELDS
-            )
-            st.session_state["decision_last_ts"] = now_ts
-            st.success(
-                f"已写入 {written} 条 → output/decision_log.csv"
-                f"（比例 {ratio:.2f}，操作人 {record['operator']}）"
-            )
+            for item in cart.values()
+        ]
+        st.dataframe(
+            pd.DataFrame(cart_rows), hide_index=True, use_container_width=True
+        )
+        cart_keys = list(cart)
+        remove_sig = abs(hash(tuple(cart_keys))) % 1_000_000
+        remove_col, confirm_col = st.columns([1.0, 2.6])
+        remove_key = remove_col.selectbox(
+            "移除一项",
+            options=cart_keys,
+            index=None,
+            format_func=lambda name: series_label(
+                *[int(part) for part in name.split("-")]
+            ),
+            placeholder="选择要移除的 SKU",
+            key=f"order_remove_{remove_sig}",
+        )
+        if remove_col.button(
+            "移除",
+            key="order_remove_btn",
+            use_container_width=True,
+            disabled=not can_write or remove_key is None,
+        ) and remove_key is not None:
+            cart.pop(remove_key, None)
+            st.session_state["order_cart"] = cart
+            st.rerun()
 
-    history = decision_support.load_decisions(log_path)
-    if history is not None and not history.empty:
-        with st.expander(f"查看最近留痕（共 {len(history):,} 条）"):
-            st.dataframe(
-                history.tail(10).iloc[::-1],
-                hide_index=True,
-                use_container_width=True,
+        total_qty = int(sum(int(item["applied_qty"]) for item in cart.values()))
+        if confirm_col.button(
+            f"确认补货单（{len(cart)} 条 / {total_qty} 件）",
+            type="primary",
+            key="order_confirm",
+            use_container_width=True,
+            disabled=not can_write,
+        ):
+            batch_id = _new_batch_id()
+            created_at = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+            rows = []
+            for item in cart.values():
+                rows.append(
+                    {
+                        "batch_id": batch_id,
+                        "created_at": created_at,
+                        "snapshot_date": snapshot,
+                        "store_id": int(item["store_id"]),
+                        "product_id": int(item["product_id"]),
+                        "shelf_life_days": int(item["shelf_life_days"]),
+                        "urgency": str(item["urgency"]),
+                        "on_hand": float(item["on_hand"]),
+                        "rop_p90": float(item["rop_p90"]),
+                        "suggest_qty": int(item["suggest_qty"]),
+                        "applied_ratio": float(item["applied_ratio"]),
+                        "applied_qty": int(item["applied_qty"]),
+                        "status": "已确认",
+                        "operator": operator,
+                        "note": "逐 SKU 补货单",
+                    }
+                )
+            existing = _load_decision_items()
+            combined = pd.concat(
+                [existing, pd.DataFrame(rows)], ignore_index=True
             )
+            _save_decision_items(combined)
+            _append_batch_event(
+                batch_id,
+                "confirm",
+                "已确认",
+                operator,
+                len(rows),
+                total_qty,
+                note="创建补货单",
+            )
+            st.session_state["order_cart"] = {}
+            st.session_state["last_order_batch"] = batch_id
+            st.success(f"已创建批次 {batch_id}：{len(rows)} 条 / {total_qty} 件")
+            st.rerun()
+    else:
+        st.caption("补货单为空。")
+
+    items = _load_decision_items()
+    latest = _latest_batch(items)
+    if latest is not None:
+        batch_id, sub, status = latest
+        total = int(
+            pd.to_numeric(sub["applied_qty"], errors="coerce").fillna(0).sum()
+        )
+        st.markdown(
+            f"**最近批次** `{batch_id}` · 状态 **{status}** · "
+            f"{len(sub)} 条 / {total:,} 件"
+        )
+        action_cols = st.columns([1.1, 1.1, 1.1, 1.5])
+        if can_approve:
+            if status == "已确认":
+                if action_cols[0].button(
+                    "审批通过",
+                    key=f"order_approve_{batch_id}",
+                    use_container_width=True,
+                ):
+                    _update_batch_status(
+                        batch_id, "已审批", operator, "approve"
+                    )
+                    st.rerun()
+            elif status == "已审批":
+                if action_cols[0].button(
+                    "标记已下单",
+                    key=f"order_place_{batch_id}",
+                    use_container_width=True,
+                ):
+                    _update_batch_status(
+                        batch_id, "已下单", operator, "order"
+                    )
+                    st.rerun()
+            elif status == "已下单":
+                if action_cols[0].button(
+                    "标记已到货",
+                    key=f"order_receive_{batch_id}",
+                    use_container_width=True,
+                ):
+                    _update_batch_status(
+                        batch_id, "已到货", operator, "receive"
+                    )
+                    st.rerun()
+            if status != "已撤销":
+                if action_cols[1].button(
+                    "撤销该批次",
+                    key=f"order_undo_{batch_id}",
+                    use_container_width=True,
+                ):
+                    _update_batch_status(
+                        batch_id, "已撤销", operator, "undo"
+                    )
+                    st.rerun()
+        elif status != "已撤销":
+            action_cols[0].caption("审批 / 下单 / 到货 / 撤销仅管理员可用。")
+
+        export = pd.DataFrame(
+            {
+                "批次": sub["batch_id"],
+                "门店": sub["store_id"],
+                "SKU": sub["product_id"],
+                "保质期(天)": sub["shelf_life_days"],
+                "紧急度": sub["urgency"],
+                "建议量": sub["suggest_qty"],
+                "下单量": sub["applied_qty"],
+                "状态": sub["status"],
+                "操作人": sub["operator"],
+                "时间": sub["created_at"],
+            }
+        )
+        action_cols[3].download_button(
+            "导出采购单",
+            data=export.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"采购单_{batch_id}.csv",
+            mime="text/csv",
+            key="order_export",
+            use_container_width=True,
+        )
+
+    events = _load_batch_events()
+    if not items.empty or not events.empty:
+        with st.expander("批次历史与操作记录"):
+            if not items.empty:
+                history = (
+                    items.assign(
+                        applied_qty=pd.to_numeric(
+                            items["applied_qty"], errors="coerce"
+                        ).fillna(0)
+                    )
+                    .groupby("batch_id", as_index=False)
+                    .agg(
+                        status=("status", "last"),
+                        item_count=("product_id", "count"),
+                        total_qty=("applied_qty", "sum"),
+                        operator=("operator", "last"),
+                        created_at=("created_at", "last"),
+                    )
+                    .sort_values("batch_id", ascending=False)
+                    .head(6)
+                )
+                st.markdown("**最近批次**")
+                st.dataframe(
+                    history, hide_index=True, use_container_width=True
+                )
+            if not events.empty:
+                st.markdown("**操作记录**")
+                st.dataframe(
+                    events.tail(12).iloc[::-1],
+                    hide_index=True,
+                    use_container_width=True,
+                )
 
 
 def _query_value(name: str, default: str = "") -> str:
@@ -3074,7 +3405,7 @@ def render_fresh_replenishment(
             st.caption("还没有保存的视图；保存后会写在本机 output/saved_views.json。")
 
     render_trace_section(view, caps, config)
-    render_decision_log_panel(view, snapshot)
+    render_order_panel(view, snapshot)
     _render_data_import()
     _render_cap_sweep(cap_sweep, config, repl)
 
@@ -4264,6 +4595,7 @@ def _render_auth_controls() -> None:
                     "auth_panel_open",
                     "auth_username",
                     "auth_password",
+                    "order_cart",
                 ):
                     st.session_state.pop(key, None)
                 _clear_auth_token()
