@@ -1912,44 +1912,6 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
     border-radius: 14px;
     padding: 0;
   }
-  .table-pager {
-    flex: 0 0 auto;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 4px 0;
-    margin-top: 4px;
-    border-top: 1px solid #E8EFF7;
-    color: #5f6f82;
-    font-size: 11.5px;
-    font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
-  }
-  .table-pager button {
-    height: 26px;
-    padding: 0 10px;
-    border: 1px solid #DCE7F3;
-    border-radius: 7px;
-    background: #FFFFFF;
-    color: #1E6FB8;
-    font-size: 11.5px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .table-pager button:disabled {
-    color: #B8C4D2;
-    border-color: #EDF3F9;
-    cursor: default;
-  }
-  .table-pager select {
-    height: 26px;
-    padding: 0 4px;
-    border: 1px solid #DCE7F3;
-    border-radius: 7px;
-    background: #FFFFFF;
-    color: #334155;
-    font-size: 11.5px;
-  }
-  .table-pager .pager-spacer { margin-left: auto; }
   table.fresh-card-table {
     width: 100%;
     min-width: 0;
@@ -2046,28 +2008,12 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
         <tbody>__ROWS__</tbody>
       </table>
     </div>
-    <div class="table-pager" id="table-pager">
-      <span id="page-info"></span>
-      <button id="page-prev" type="button">上一页</button>
-      <button id="page-next" type="button">下一页</button>
-      <span class="pager-spacer"></span>
-      <label>每页
-        <select id="page-size">
-          <option value="8" selected>8 条</option>
-          <option value="16">16 条</option>
-          <option value="32">32 条</option>
-        </select>
-      </label>
-    </div>
   </div>
   <script>
     (function () {
       var table = document.getElementById("fresh-card-table");
       var tbody = table.querySelector("tbody");
       var headers = Array.prototype.slice.call(table.querySelectorAll("thead th"));
-      var allRows = Array.prototype.slice.call(tbody.querySelectorAll("tr"));
-      var pageSize = 8;
-      var page = 0;
       var sortIndex = -1;
       var sortDirection = 1;
 
@@ -2098,9 +2044,6 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
             return String(av).localeCompare(String(bv), "zh-CN") * sortDirection;
           });
           rows.forEach(function (row) { tbody.appendChild(row); });
-          allRows = rows;
-          page = 0;
-          renderPage();
         }
 
         th.addEventListener("click", applySort);
@@ -2112,44 +2055,6 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
         });
       });
 
-      function renderPage() {
-        var total = allRows.length;
-        var pages = Math.max(1, Math.ceil(total / pageSize));
-        if (page >= pages) page = pages - 1;
-        if (page < 0) page = 0;
-        allRows.forEach(function (row, index) {
-          row.style.display =
-            index >= page * pageSize && index < (page + 1) * pageSize
-              ? ""
-              : "none";
-        });
-        var pager = document.getElementById("table-pager");
-        pager.style.display = total > 8 ? "flex" : "none";
-        document.getElementById("page-info").textContent =
-          "第 " + (page + 1) + " / " + pages + " 页 · 共 " + total + " 条";
-        document.getElementById("page-prev").disabled = page <= 0;
-        document.getElementById("page-next").disabled = page >= pages - 1;
-      }
-
-      document.getElementById("page-prev").addEventListener("click", function () {
-        if (page > 0) {
-          page -= 1;
-          renderPage();
-        }
-      });
-      document.getElementById("page-next").addEventListener("click", function () {
-        var pages = Math.max(1, Math.ceil(allRows.length / pageSize));
-        if (page < pages - 1) {
-          page += 1;
-          renderPage();
-        }
-      });
-      document.getElementById("page-size").addEventListener("change", function () {
-        pageSize = parseInt(this.value, 10) || 8;
-        page = 0;
-        renderPage();
-      });
-      renderPage();
     })();
   </script>
 </body>
@@ -3398,6 +3303,92 @@ def _clear_fresh_filters() -> None:
     st.session_state["fresh_sku_search"] = ""
 
 
+def _reset_fresh_page() -> None:
+    st.session_state["fresh_page"] = 1
+
+
+def _go_to_page(page: int) -> None:
+    st.session_state["fresh_page"] = int(page)
+
+
+def _pager_tokens(current: int, total: int, window: int = 5) -> list:
+    """生成 1 … 4 5 6 … 25 这类页码，始终保留首尾页。"""
+    total = max(1, int(total))
+    current = max(1, min(int(current), total))
+    if total <= window + 2:
+        return list(range(1, total + 1))
+    if current <= window - 1:
+        return [*range(1, window + 1), "…", total]
+    if current >= total - window + 2:
+        return [1, "…", *range(total - window + 1, total + 1)]
+    return [1, "…", current - 1, current, current + 1, "…", total]
+
+
+def _render_pagination(
+    total_rows: int, total_pages: int, current_page: int, page_size: int
+) -> None:
+    """表格下方的数字分页器：原生按钮，主色高亮当前页。"""
+    tokens = _pager_tokens(current_page, total_pages)
+    # 末尾留一格，避免右下角悬浮球压住"每页条数"下拉框
+    widths = [0.55] + [0.55] * len(tokens) + [0.55, 2.2, 1.15, 0.9]
+    cols = st.columns(widths)
+    cols[0].button(
+        "‹",
+        key="fresh_page_prev",
+        on_click=_go_to_page,
+        args=(current_page - 1,),
+        disabled=current_page <= 1,
+        use_container_width=True,
+        help="上一页",
+    )
+    for offset, token in enumerate(tokens, 1):
+        col = cols[offset]
+        if token == "…":
+            col.markdown(
+                '<div style="display:flex;align-items:center;'
+                "justify-content:center;height:38px;color:inherit;"
+                'opacity:.5;font-size:13px;">…</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            col.button(
+                str(token),
+                key=f"fresh_page_btn_{token}",
+                on_click=_go_to_page,
+                args=(int(token),),
+                type="primary" if int(token) == current_page else "secondary",
+                use_container_width=True,
+            )
+    next_index = 1 + len(tokens)
+    cols[next_index].button(
+        "›",
+        key="fresh_page_next",
+        on_click=_go_to_page,
+        args=(current_page + 1,),
+        disabled=current_page >= total_pages,
+        use_container_width=True,
+        help="下一页",
+    )
+    info_col = cols[next_index + 1]
+    info_col.markdown(
+        '<div style="display:flex;align-items:center;height:38px;'
+        "font-size:12px;color:inherit;opacity:.65;\">"
+        f"第 {current_page} / {total_pages} 页 · 共 {total_rows} 条</div>",
+        unsafe_allow_html=True,
+    )
+    size_options = [8, 16, 32]
+    cols[next_index + 2].selectbox(
+        "每页",
+        options=size_options,
+        index=size_options.index(page_size) if page_size in size_options else 0,
+        format_func=lambda value: f"{value} 条/页",
+        label_visibility="collapsed",
+        key="fresh_page_size",
+        on_change=_reset_fresh_page,
+        help="每页显示条数",
+    )
+
+
 @st.cache_data(show_spinner=False, ttl=300)
 def _cached_reports(
     display: pd.DataFrame,
@@ -3608,16 +3599,45 @@ def render_fresh_replenishment(
 
     display = pd.DataFrame(records)
 
-    if len(display) <= 8:
-        table_height = min(560, 50 + 62 * len(display))
+    page_size = int(st.session_state.get("fresh_page_size", 8) or 8)
+    if page_size not in (8, 16, 32):
+        page_size = 8
+    total_rows = len(display)
+    total_pages = max(1, math.ceil(total_rows / page_size))
+    signature = (
+        int(store_sel),
+        tuple(urgency_sel),
+        tuple(int(x) for x in shelf_sel),
+        bool(expiring_only),
+        search_raw.strip(),
+    )
+    if st.session_state.get("fresh_page_signature") != signature:
+        st.session_state["fresh_page"] = 1
+        st.session_state["fresh_page_signature"] = signature
+    current_page = min(
+        max(1, int(st.session_state.get("fresh_page", 1) or 1)),
+        total_pages,
+    )
+    st.session_state["fresh_page"] = current_page
+    start = (current_page - 1) * page_size
+    page_display = display.iloc[start : start + page_size]
+
+    if len(page_display) <= 8:
+        table_height = min(560, 50 + 62 * len(page_display))
     else:
         table_height = 600
-    components.html(_fresh_inventory_table_html(display), height=table_height)
+    components.html(
+        _fresh_inventory_table_html(page_display), height=table_height
+    )
+    if total_pages > 1:
+        _render_pagination(total_rows, total_pages, current_page, page_size)
     caption_col, export_col = st.columns([4.6, 1.0])
     with caption_col:
         st.caption(
-            f"当前显示 {len(view):,} / {len(repl):,} 条；默认按紧急度、临期数量降序。"
-            f"库存与订货单位：{FRESH_UNIT}；表格支持点击表头排序与分页，表头固定，可在表格内滚动。"
+            f"当前筛选 {len(view):,} / {len(repl):,} 条；"
+            f"第 {current_page} / {total_pages} 页（本页 {len(page_display)} 条）。"
+            f"默认按紧急度、临期数量降序。"
+            f"库存与订货单位：{FRESH_UNIT}；表头排序作用于当前页，翻页用数字按钮。"
             f"临期 = 剩余保质期 ≤ {exp_threshold} 天；相关行浅橙高亮，"
             f"橙色“临期”标签表示需关注，绿色 ✓ 表示未临期。"
         )
