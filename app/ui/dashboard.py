@@ -21,6 +21,7 @@ import json
 import math
 import re
 import sys
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -75,6 +76,37 @@ FRESH_QUICK_QUESTIONS = [
     "SKU 145-802 该补多少？",
     "哪些货快过期了？",
 ]
+
+# 方言输入：下拉选项 + 内置小词表（不依赖缺失的 dialect_glossary.yaml）
+DIALECT_OPTIONS = {
+    "普通话 / 关闭": "none",
+    "自动识别": "auto",
+    "桂柳话": "guiliu",
+    "川渝话": "chuanyu",
+    "粤语": "yue",
+}
+DIALECT_WORDS: dict[str, dict[str, str]] = {
+    "guiliu": {
+        "包谷": "玉米",
+        "苞谷": "玉米",
+        "洋芋": "土豆",
+        "番茄": "西红柿",
+        "包心菜": "卷心菜",
+    },
+    "chuanyu": {
+        "包谷": "玉米",
+        "苞谷": "玉米",
+        "洋芋": "土豆",
+        "海椒": "辣椒",
+        "藤藤菜": "空心菜",
+    },
+    "yue": {
+        "粟米": "玉米",
+        "薯仔": "土豆",
+        "番茄": "西红柿",
+        "青椒": "辣椒",
+    },
+}
 
 FRESH_REPL = "freshretail_inventory_replenishment.csv"
 FRESH_FORECAST = "freshretail_forecast_predictions.csv"
@@ -2243,6 +2275,105 @@ def render_trace_section(
         _trace_alpha(row["shelf_life_days"])
 
 
+_DECISION_LOG_FIELDS = (
+    "decided_at",
+    "snapshot_date",
+    "ratio",
+    "series_count",
+    "suggest_total",
+    "applied_total",
+    "operator",
+    "note",
+)
+
+
+def render_decision_log_panel(view: pd.DataFrame, snapshot: str) -> None:
+    """功能 3：按比例确认一次，往 output/decision_log.csv 追加一条操作记录。
+
+    独立代码块，只新增一段控件；不改表格、轮播图与顶栏。
+    """
+    st.divider()
+    st.markdown("#### 决策留痕")
+    st.caption(
+        "按当前筛选范围留一条操作记录，追加写入 output/decision_log.csv；"
+        "不覆盖历史，60 秒内重复点击不会重复写入。"
+    )
+    if view is None or view.empty:
+        st.info("当前筛选没有可记录的序列。")
+        return
+
+    ratio_labels = {
+        0.5: "半量（0.5 倍）",
+        0.75: "七五折（0.75 倍）",
+        1.0: "按建议（1.0 倍）",
+        1.25: "加一成（1.25 倍）",
+        1.5: "加五成（1.5 倍）",
+    }
+    c_ratio, c_operator, c_summary, c_btn = st.columns([1.2, 1.1, 1.6, 1.2])
+    ratio = c_ratio.selectbox(
+        "执行比例",
+        options=[1.0, 0.75, 1.25, 0.5, 1.5],
+        format_func=lambda x: ratio_labels.get(x, f"{x:.2f} 倍"),
+        key="decision_ratio",
+    )
+    default_operator = str(st.session_state.get("auth_account", "店长") or "店长")
+    operator = c_operator.text_input(
+        "操作人", value=default_operator, key="decision_operator"
+    )
+
+    suggest = pd.to_numeric(view["suggest_qty"], errors="coerce").fillna(0).astype(int)
+    # 与逐行留痕同口径：每行先四舍五入再求和，避免非 1.0 倍时合计对不上。
+    applied_total = int(sum(math.floor(q * float(ratio) + 0.5) for q in suggest))
+    suggest_total = int(suggest.sum())
+    c_summary.markdown(
+        f"本次记录 **{len(view):,}** 条序列，合计 **{applied_total:,}** 件"
+        f"（建议 {suggest_total:,} 件，差 {applied_total - suggest_total:+,}）"
+    )
+    clicked = c_btn.button(
+        "确认执行",
+        type="primary",
+        key="decision_confirm",
+        use_container_width=True,
+    )
+
+    log_path = OUTPUT_DIR / "decision_log.csv"
+    if clicked:
+        now_ts = time.time()
+        last_ts = float(st.session_state.get("decision_last_ts", 0.0))
+        if now_ts - last_ts < 60:
+            st.warning(
+                "60 秒内刚刚记录过一次，本次未重复写入，避免同一单被记两遍。"
+            )
+        else:
+            record = {
+                "decided_at": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "snapshot_date": snapshot,
+                "ratio": float(ratio),
+                "series_count": int(len(view)),
+                "suggest_total": suggest_total,
+                "applied_total": applied_total,
+                "operator": operator.strip() or "店长",
+                "note": "按当前筛选范围整单确认",
+            }
+            written = decision_support.append_rows(
+                log_path, [record], _DECISION_LOG_FIELDS
+            )
+            st.session_state["decision_last_ts"] = now_ts
+            st.success(
+                f"已写入 {written} 条 → output/decision_log.csv"
+                f"（比例 {ratio:.2f}，操作人 {record['operator']}）"
+            )
+
+    history = decision_support.load_decisions(log_path)
+    if history is not None and not history.empty:
+        with st.expander(f"查看最近留痕（共 {len(history):,} 条）"):
+            st.dataframe(
+                history.tail(10).iloc[::-1],
+                hide_index=True,
+                use_container_width=True,
+            )
+
+
 def render_fresh_replenishment(
     repl: pd.DataFrame,
     caps: dict[tuple[int, int], dict],
@@ -2363,6 +2494,7 @@ def render_fresh_replenishment(
     )
 
     render_trace_section(view, caps, config)
+    render_decision_log_panel(view, snapshot)
     _render_data_import()
     _render_cap_sweep(cap_sweep, config, repl)
 
@@ -3060,6 +3192,25 @@ def _tool_call_markdown(tools: list[dict]) -> None:
             st.caption(str(call["summary"]))
 
 
+def normalize_dialect(text: str, dialect: str) -> tuple[str, list[tuple[str, str]]]:
+    """按内置词表把方言词换成普通话词；返回 (归一化文本, 实际替换列表)。"""
+    if not text or dialect == "none":
+        return text, []
+    keys = list(DIALECT_WORDS) if dialect == "auto" else [dialect]
+    mapping: dict[str, str] = {}
+    for key in keys:
+        mapping.update(DIALECT_WORDS.get(key, {}))
+
+    result = text
+    replacements: list[tuple[str, str]] = []
+    # 长词优先，避免短词先替换后破坏长词（如“包心菜”与“包谷”）。
+    for word in sorted(mapping, key=len, reverse=True):
+        if word in result:
+            result = result.replace(word, mapping[word])
+            replacements.append((word, mapping[word]))
+    return result, replacements
+
+
 def _ask_agent(
     question: str,
     api_key: str,
@@ -3067,6 +3218,8 @@ def _ask_agent(
     dataset: str,
     state_key: str,
     source_note: str | None,
+    display_question: str | None = None,
+    dialect_note: str | None = None,
 ) -> None:
     agent = get_agent()
     activate_agent_dataset(agent, dataset)
@@ -3074,7 +3227,13 @@ def _ask_agent(
     messages_key = f"agent_messages_{state_key}"
     display = st.session_state[display_key]
     messages = st.session_state[messages_key]
-    display.append({"role": "user", "content": question})
+    display.append(
+        {
+            "role": "user",
+            "content": display_question or question,
+            "note": dialect_note,
+        }
+    )
     messages.append({"role": "user", "content": question})
 
     with st.spinner("正在查询工具并生成回答..."):
@@ -3104,6 +3263,8 @@ def _render_chat_history(display: list[dict], source_note: str | None) -> None:
         role = message.get("role", "assistant")
         with st.chat_message(role):
             st.markdown(message.get("content", ""))
+            if role == "user" and message.get("note"):
+                st.caption(message["note"])
             if role == "assistant":
                 note = message.get("source") or source_note
                 if note:
@@ -3169,6 +3330,13 @@ def render_chat(
             quick_question = label
 
     st.markdown('<div id="agent-chat-anchor"></div>', unsafe_allow_html=True)
+    dialect_label = st.selectbox(
+        "方言输入",
+        options=list(DIALECT_OPTIONS),
+        index=1,
+        key=f"dialect_{state_key}",
+        help="选方言后，提交前按内置词表换成普通话词；不额外调用模型。",
+    )
     # 底部常开的普通表单：输入文字不会触发 rerun，只有点击发送才提交。
     with st.form(f"agent_form_{state_key}", clear_on_submit=True):
         prompt = st.text_input(
@@ -3192,7 +3360,23 @@ def render_chat(
             question = auto_question
 
     if question:
-        _ask_agent(question, api_key, store, dataset, state_key, source_note)
+        dialect = DIALECT_OPTIONS[dialect_label]
+        normalized, replacements = normalize_dialect(question, dialect)
+        dialect_note = None
+        if replacements:
+            dialect_note = "方言归一化：" + "、".join(
+                f"{src}→{dst}" for src, dst in replacements
+            )
+        _ask_agent(
+            normalized,
+            api_key,
+            store,
+            dataset,
+            state_key,
+            source_note,
+            display_question=question,
+            dialect_note=dialect_note,
+        )
         display = st.session_state[display_key]
 
     with history_slot.container():
