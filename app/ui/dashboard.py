@@ -36,6 +36,8 @@ ASSET_DIR = Path(__file__).resolve().parent / "assets"
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
+import decision_support  # noqa: E402 - 溯源三方案，纯计算模块（不依赖 Streamlit）
+
 _AGENT = None
 
 
@@ -79,6 +81,9 @@ FRESH_FORECAST = "freshretail_forecast_predictions.csv"
 FRESH_COMPARISON = "freshretail_inventory_policy_comparison.csv"
 FRESH_CAP_SWEEP = "freshretail_inventory_cap_sweep.csv"
 FRESH_SUMMARY = "freshretail_sku_summary_all.csv"
+FRESH_WHATIF = "freshretail_what_if.csv"
+FRESH_WHATIF_SUMMARY = "freshretail_what_if_summary.csv"
+FRESH_ALPHA_TERMINAL = "alpha_sweep_terminal.csv"
 FRESH_METRICS = "freshretail_forecast_metrics.csv"
 
 # 四档紧急度按固定顺序排序；颜色由 CSS 的 .badge-* 类承载
@@ -1973,6 +1978,271 @@ def _render_data_import() -> None:
                 st.rerun()
 
 
+# ---------------------------------------------------------------------------
+# 决策溯源（功能 2）：表格下方 selectbox 选序列 + 三个 tab
+# 独立代码块，不改动上方表格、轮播图与顶栏；只读已加载的数据与 output 表。
+# ---------------------------------------------------------------------------
+def _trace_whatif_table(key: tuple[int, int]) -> None:
+    """② 不照做会怎样：优先看这条序列的明细，缺失时退回全局汇总。"""
+    detail = load_csv(FRESH_WHATIF)
+    summary = load_csv(FRESH_WHATIF_SUMMARY)
+    labels: dict[float, str] = {}
+    if summary is not None and not summary.empty:
+        labels = {
+            float(row.scenario_ratio): str(row.scenario_label)
+            for row in summary.itertuples()
+        }
+
+    sub = None
+    if detail is not None and not detail.empty:
+        sub = detail[
+            (pd.to_numeric(detail["store_id"], errors="coerce") == key[0])
+            & (pd.to_numeric(detail["product_id"], errors="coerce") == key[1])
+        ]
+
+    if sub is None or sub.empty:
+        st.info("这条序列没有 what-if 明细，只能看全局口径。")
+        if summary is None or summary.empty:
+            return
+        table = summary.copy()
+        source_note = "全部 200 条序列合计"
+    else:
+        table = sub.copy()
+        source_note = f"仅 {series_label(*key)} 这一条序列"
+
+    table = table.sort_values("scenario_ratio")
+    label_column = [
+        labels.get(float(ratio), f"{float(ratio):.2f} 倍")
+        for ratio in table["scenario_ratio"]
+    ]
+
+    if "scenario_order_qty" in table.columns:
+        display = pd.DataFrame(
+            {
+                "下法": label_column,
+                "下单量": table["scenario_order_qty"].astype(float).round(0).astype(int),
+                "缺货件": table["unmet_units"].astype(float).round(2),
+                "报损件": table["spoiled_units"].astype(float).round(2),
+                "满足率": [
+                    f"{float(x):.2%}" for x in table["fill_rate"].astype(float)
+                ],
+                "相对按建议的成本差": [
+                    f"{float(x):+.2f}"
+                    for x in table["delta_cost_vs_base"].astype(float)
+                ],
+            }
+        )
+    else:
+        display = pd.DataFrame(
+            {
+                "下法": label_column,
+                "总缺货件": table["总缺货件"].astype(float).round(2),
+                "总报损件": table["总报损件"].astype(float).round(2),
+                "平均满足率": [
+                    f"{float(x):.2%}" for x in table["平均满足率"].astype(float)
+                ],
+                "相对基线成本差": [
+                    f"{float(x):+.2f}" for x in table["相对基线成本差"].astype(float)
+                ],
+            }
+        )
+
+    st.caption(f"口径：{source_note}，7 天窗口，需求按实测回放；基线是「按建议」。")
+    st.dataframe(display, hide_index=True, use_container_width=True)
+    st.caption(
+        "两点如实说明：① 0.75 倍档的报损可能高于按建议档（批次轮换的次生效应），"
+        "不是必然单调；② 多订到 1.5 倍以上时缺货几乎不再下降、报损却大幅上升，"
+        "说明瓶颈在效期而不是订货量。"
+    )
+
+
+def _trace_alpha(shelf_life: int) -> None:
+    """③ 分位凭什么定在这：α 扫描的期末总成本曲线。"""
+    term = load_csv(FRESH_ALPHA_TERMINAL)
+    if term is None or term.empty:
+        st.info("没有 α 扫描结果表，跳过这一页。")
+        return
+
+    shelf_options = sorted(
+        {int(x) for x in term["shelf_life_days"].dropna().unique().tolist()}
+    )
+    use_shelf = shelf_life if shelf_life in shelf_options else shelf_options[0]
+    if use_shelf != shelf_life:
+        st.caption(
+            f"α 扫描只跑了 {' / '.join(f'{s} 天' for s in shelf_options)} 两档；"
+            f"当前序列是 {shelf_life} 天档，其结论不外推。"
+        )
+
+    base = term[
+        (term["shelf_life_days"].astype(int) == use_shelf)
+        & (term["basis"].astype(str) == "no_settle")
+    ].sort_values("alpha")
+    if base.empty:
+        st.info("这一档没有 no_settle 口径的结果。")
+        return
+
+    st.markdown(f"**{use_shelf} 天档：安全库存分位 α 与期末总成本**")
+    chart = pd.DataFrame(
+        {
+            "期末总成本（缺货 5 + 报损 1 + 持有）": base["total_cost"]
+            .astype(float)
+            .tolist()
+        },
+        index=[f"{float(a):.2f}" for a in base["alpha"].tolist()],
+    )
+    st.line_chart(chart, height=260)
+    st.caption(
+        "横轴是触发线用的分位 α，纵轴是 7 天期末结算总成本。"
+        "0.90 以上曲线进入平台区，相邻档差的中位数已接近单步噪声，"
+        "因此只报落点区间、不宣称单点最优。"
+    )
+    st.markdown(
+        "- 0.90 以上**不可辨识**：符号检验 p=0.6562（3 天）/ 0.1094（5 天），均 > 0.05，"
+        "只报区间 [0.90, 0.96] / [0.90, 0.98]。\n"
+        "- 名义报童临界分位 0.833，比区间最低点高 2.66% / 4.28%，"
+        "所以**83% 偏低**、调到 0.90 是真收益。\n"
+        "- α 作用在**触发线**，不改变每次订多少——"
+        "这条口径差异在报告 1 节已写明，不要把它说成「验证了报童公式」。"
+    )
+
+
+def render_trace_section(
+    view: pd.DataFrame,
+    caps: dict[tuple[int, int], dict],
+    config: dict,
+) -> None:
+    """表格下方的溯源区：选序列 -> 三个分页展示计算依据。"""
+    if view is None or view.empty:
+        return
+
+    rep_cfg = (config or {}).get("replenishment", {}) or {}
+    base_multiplier = float(rep_cfg.get("expiry_cap_multiplier", 1.0))
+    lead_time = int(rep_cfg.get("lead_time_days", 1))
+    cover_days = int(rep_cfg.get("target_cover_days", 7))
+    pack = int(rep_cfg.get("order_pack_size", 1))
+    min_qty = int(rep_cfg.get("min_order_qty", 1))
+    urgent_ratio = float(
+        ((config or {}).get("urgency", {}) or {}).get("urgent_rop_ratio", 0.5)
+    )
+
+    st.divider()
+    st.markdown("#### 决策溯源")
+    st.caption(
+        "选择一条序列：① 订货量怎么算出来的；② 不照做会怎样；"
+        "③ 安全库存分位凭什么定在这。"
+    )
+
+    rows_by_key = {
+        (int(row.store_id), int(row.product_id)): row for row in view.itertuples()
+    }
+    options = list(rows_by_key)
+
+    def _label(key: tuple[int, int]) -> str:
+        tier = str(getattr(rows_by_key[key], "urgency", ""))
+        return f"{series_label(*key)} · {tier}" if tier else series_label(*key)
+
+    # 用筛选后的选项指纹做 key：筛选变化时自动换 key、重置选择，
+    # 既保留同一筛选下的选中状态，又避免旧索引越界。
+    option_sig = abs(hash(tuple(options))) % 1_000_000
+    choice = st.selectbox(
+        "选择要溯源的序列",
+        options=options,
+        index=None,
+        format_func=_label,
+        placeholder="选择店 × SKU（默认不展开）",
+        key=f"fresh_trace_select_{option_sig}",
+    )
+    if choice is None:
+        return
+
+    record = rows_by_key[choice]
+    key = (int(record.store_id), int(record.product_id))
+    row = {
+        "store_id": key[0],
+        "product_id": key[1],
+        "shelf_life_days": int(record.shelf_life_days),
+        "on_hand": float(record.on_hand),
+        "rop_p90": float(record.rop_p90),
+        "target_level": float(record.target_level),
+        "suggest_qty": int(record.suggest_qty),
+        "urgency": str(record.urgency),
+    }
+    cap_info = caps.get(key)
+
+    st.markdown(
+        f"**{series_label(*key)}** · 建议订货 **{row['suggest_qty']:,}** 件"
+        f"（紧急度 {row['urgency']}）"
+    )
+    tab_chain, tab_whatif, tab_alpha = st.tabs(
+        ["① 这个数怎么算的", "② 不照做会怎样", "③ 分位凭什么定在这"]
+    )
+
+    with tab_chain:
+        if cap_info is None:
+            st.warning("这条序列在 7 天预测表里找不到对应日期，无法展开推导链。")
+        else:
+            steps = decision_support.trace_steps(
+                row,
+                cap_info,
+                base_multiplier,
+                lead_time,
+                cover_days,
+                urgent_ratio,
+            )
+            for step in steps:
+                st.markdown(f"**{step['step']}** ｜ `{step['formula']}`")
+                st.markdown(step["detail"])
+
+            scheme = decision_support.scheme_quantities(
+                row,
+                float(cap_info["sellable"]),
+                base_multiplier,
+                pack,
+                min_qty,
+            )
+            base_ok = scheme["当前配置"]["qty"] == row["suggest_qty"]
+            if not base_ok:
+                st.info(
+                    "三方案自检未通过（当前配置版与补货快照的建议量不一致），"
+                    "这里只展示推导链，不展示另外两种下法。"
+                )
+            else:
+                st.markdown("")
+                st.markdown(
+                    "**三种下法对比**（只改效期上限倍数，触发线 ROP_P90 不动）"
+                )
+                base_qty = scheme["当前配置"]["qty"]
+                compare_rows = []
+                for name in ("收紧一档", "当前配置", "放宽一档"):
+                    item = scheme[name]
+                    delta = item["qty"] - base_qty
+                    compare_rows.append(
+                        {
+                            "方案": name,
+                            "效期倍数": round(item["multiplier"], 2),
+                            "效期上限": round(item["cap"], 2),
+                            "修正目标": round(item["target_eff"], 2),
+                            "订货量": item["qty"],
+                            "相对当前": "—" if delta == 0 else f"{delta:+d} 件",
+                        }
+                    )
+                st.dataframe(
+                    pd.DataFrame(compare_rows),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+                st.caption(
+                    "当前配置版必须与补货快照的建议量相等，否则整列降级。"
+                    "收紧一档少订、缺货变多；放宽一档多订、报损上升。"
+                )
+
+    with tab_whatif:
+        _trace_whatif_table(key)
+
+    with tab_alpha:
+        _trace_alpha(row["shelf_life_days"])
+
+
 def render_fresh_replenishment(
     repl: pd.DataFrame,
     caps: dict[tuple[int, int], dict],
@@ -2092,6 +2362,7 @@ def render_fresh_replenishment(
         f"橙色“临期”标签表示需关注，绿色 ✓ 表示未临期。"
     )
 
+    render_trace_section(view, caps, config)
     _render_data_import()
     _render_cap_sweep(cap_sweep, config, repl)
 
