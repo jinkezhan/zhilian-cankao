@@ -1815,14 +1815,59 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
     font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
     color: #334155;
   }
-  .table-scroll {
+  .table-wrap {
+    display: flex;
+    flex-direction: column;
     width: 100%;
     height: 100%;
+  }
+  .table-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
     overflow-y: auto;
     overflow-x: hidden;
     border-radius: 14px;
-    padding: 0 0 4px;
+    padding: 0;
   }
+  .table-pager {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 4px 0;
+    margin-top: 4px;
+    border-top: 1px solid #E8EFF7;
+    color: #5f6f82;
+    font-size: 11.5px;
+    font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
+  }
+  .table-pager button {
+    height: 26px;
+    padding: 0 10px;
+    border: 1px solid #DCE7F3;
+    border-radius: 7px;
+    background: #FFFFFF;
+    color: #1E6FB8;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .table-pager button:disabled {
+    color: #B8C4D2;
+    border-color: #EDF3F9;
+    cursor: default;
+  }
+  .table-pager select {
+    height: 26px;
+    padding: 0 4px;
+    border: 1px solid #DCE7F3;
+    border-radius: 7px;
+    background: #FFFFFF;
+    color: #334155;
+    font-size: 11.5px;
+  }
+  .table-pager .pager-spacer { margin-left: auto; }
   table.fresh-card-table {
     width: 100%;
     min-width: 0;
@@ -1911,18 +1956,36 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
 </style>
 </head>
 <body>
-  <div class="table-scroll">
-    <table class="fresh-card-table" id="fresh-card-table">
-      <colgroup>__COLS__</colgroup>
-      <thead><tr>__HEADERS__</tr></thead>
-      <tbody>__ROWS__</tbody>
-    </table>
+  <div class="table-wrap">
+    <div class="table-scroll">
+      <table class="fresh-card-table" id="fresh-card-table">
+        <colgroup>__COLS__</colgroup>
+        <thead><tr>__HEADERS__</tr></thead>
+        <tbody>__ROWS__</tbody>
+      </table>
+    </div>
+    <div class="table-pager" id="table-pager">
+      <span id="page-info"></span>
+      <button id="page-prev" type="button">上一页</button>
+      <button id="page-next" type="button">下一页</button>
+      <span class="pager-spacer"></span>
+      <label>每页
+        <select id="page-size">
+          <option value="8" selected>8 条</option>
+          <option value="16">16 条</option>
+          <option value="32">32 条</option>
+        </select>
+      </label>
+    </div>
   </div>
   <script>
     (function () {
       var table = document.getElementById("fresh-card-table");
       var tbody = table.querySelector("tbody");
       var headers = Array.prototype.slice.call(table.querySelectorAll("thead th"));
+      var allRows = Array.prototype.slice.call(tbody.querySelectorAll("tr"));
+      var pageSize = 8;
+      var page = 0;
       var sortIndex = -1;
       var sortDirection = 1;
 
@@ -1953,6 +2016,9 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
             return String(av).localeCompare(String(bv), "zh-CN") * sortDirection;
           });
           rows.forEach(function (row) { tbody.appendChild(row); });
+          allRows = rows;
+          page = 0;
+          renderPage();
         }
 
         th.addEventListener("click", applySort);
@@ -1963,6 +2029,45 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
           }
         });
       });
+
+      function renderPage() {
+        var total = allRows.length;
+        var pages = Math.max(1, Math.ceil(total / pageSize));
+        if (page >= pages) page = pages - 1;
+        if (page < 0) page = 0;
+        allRows.forEach(function (row, index) {
+          row.style.display =
+            index >= page * pageSize && index < (page + 1) * pageSize
+              ? ""
+              : "none";
+        });
+        var pager = document.getElementById("table-pager");
+        pager.style.display = total > 8 ? "flex" : "none";
+        document.getElementById("page-info").textContent =
+          "第 " + (page + 1) + " / " + pages + " 页 · 共 " + total + " 条";
+        document.getElementById("page-prev").disabled = page <= 0;
+        document.getElementById("page-next").disabled = page >= pages - 1;
+      }
+
+      document.getElementById("page-prev").addEventListener("click", function () {
+        if (page > 0) {
+          page -= 1;
+          renderPage();
+        }
+      });
+      document.getElementById("page-next").addEventListener("click", function () {
+        var pages = Math.max(1, Math.ceil(allRows.length / pageSize));
+        if (page < pages - 1) {
+          page += 1;
+          renderPage();
+        }
+      });
+      document.getElementById("page-size").addEventListener("change", function () {
+        pageSize = parseInt(this.value, 10) || 8;
+        page = 0;
+        renderPage();
+      });
+      renderPage();
     })();
   </script>
 </body>
@@ -2761,6 +2866,28 @@ def render_order_panel(view: pd.DataFrame, snapshot: str) -> None:
         st.toast(f"已加入 {series_label(*selected)}：{applied} 件")
         st.rerun()
 
+    bulk_pick_col, bulk_add_col = st.columns([3.2, 1.0])
+    bulk_pick = bulk_pick_col.multiselect(
+        "批量选择 SKU（可多选）",
+        options=list(rows_by_key),
+        format_func=lambda key: (
+            f"{series_label(*key)} · {rows_by_key[key].urgency}"
+        ),
+        placeholder="选择多条序列，再点批量加入",
+        key="order_bulk_pick",
+    )
+    if bulk_add_col.button(
+        f"批量加入所选（{len(bulk_pick)} 条）",
+        key="order_bulk_add",
+        use_container_width=True,
+        disabled=not can_write or not bulk_pick,
+    ):
+        for key in bulk_pick:
+            add_to_cart(key, rows_by_key[key])
+        st.session_state["order_cart"] = cart
+        st.toast(f"已加入 {len(bulk_pick)} 条序列")
+        st.rerun()
+
     bulk_col, clear_col = st.columns([3.2, 1.0])
     if bulk_col.button(
         f"整单加入当前筛选（{len(rows_by_key)} 条）",
@@ -3048,47 +3175,85 @@ def _share_view_html(query: str) -> str:
 SAVED_VIEWS_PATH = OUTPUT_DIR / "saved_views.json"
 
 
-def _load_saved_views() -> dict[str, dict]:
-    """读取本机命名视图；文件缺失或损坏时返回空字典，不让页面崩。"""
+def _read_saved_views_doc() -> dict:
     if not SAVED_VIEWS_PATH.exists():
-        return {}
+        return {"users": {}}
     try:
         payload = json.loads(SAVED_VIEWS_PATH.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return {}
-    views = payload.get("views") if isinstance(payload, dict) else None
-    if not isinstance(views, dict):
-        return {}
-    return {
-        str(name): item for name, item in views.items() if isinstance(item, dict)
-    }
+        return {"users": {}}
+    if not isinstance(payload, dict):
+        return {"users": {}}
+    users = payload.get("users")
+    if isinstance(users, dict):
+        return {"users": users}
+    legacy = payload.get("views")
+    if isinstance(legacy, dict):
+        return {"users": {}, "legacy": legacy}
+    return {"users": {}}
 
 
-def _write_saved_views(views: dict[str, dict]) -> None:
+def _load_saved_views(username: str) -> dict[str, dict]:
+    """读取当前账号的个人视图；旧版全局视图首次访问时迁移到该账号。"""
+    username = str(username or "").strip()
+    if not username:
+        return {}
+    doc = _read_saved_views_doc()
+    users = doc.get("users") or {}
+    own = users.get(username)
+    if isinstance(own, dict):
+        return {
+            str(name): item
+            for name, item in own.items()
+            if isinstance(item, dict)
+        }
+    legacy = doc.get("legacy")
+    if isinstance(legacy, dict) and not users:
+        migrated = {
+            str(name): item
+            for name, item in legacy.items()
+            if isinstance(item, dict)
+        }
+        _write_saved_views(migrated, username)
+        return migrated
+    return {}
+
+
+def _write_saved_views(views: dict[str, dict], username: str) -> None:
+    username = str(username or "").strip()
+    if not username:
+        return
+    doc = _read_saved_views_doc()
+    users = dict(doc.get("users") or {})
+    users[username] = dict(views)
     SAVED_VIEWS_PATH.parent.mkdir(parents=True, exist_ok=True)
     SAVED_VIEWS_PATH.write_text(
-        json.dumps({"views": views}, ensure_ascii=False, indent=2),
+        json.dumps({"users": users}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
 
-def _save_named_view(name: str, params: dict) -> str:
+def _save_named_view(name: str, params: dict, username: str) -> str:
+    if not str(username or "").strip():
+        return "请先登录再保存视图。"
     clean = str(name or "").strip()[:40]
     if not clean:
         return "请先填写视图名称。"
-    views = _load_saved_views()
+    views = _load_saved_views(username)
     updated = clean in views
     views[clean] = dict(params)
-    _write_saved_views(views)
+    _write_saved_views(views, username)
     return f"{'已更新' if updated else '已保存'}视图「{clean}」。"
 
 
-def _delete_named_view(name: str) -> str:
-    views = _load_saved_views()
+def _delete_named_view(name: str, username: str) -> str:
+    if not str(username or "").strip():
+        return "请先登录再删除视图。"
+    views = _load_saved_views(username)
     if name not in views:
         return "视图不存在。"
     del views[name]
-    _write_saved_views(views)
+    _write_saved_views(views, username)
     return f"已删除视图「{name}」。"
 
 
@@ -3138,7 +3303,8 @@ def _apply_saved_view(params: dict) -> None:
 
 
 def _delete_saved_view_callback(name: str) -> None:
-    st.session_state["saved_view_notice"] = _delete_named_view(name)
+    username = str(st.session_state.get("auth_account", "") or "")
+    st.session_state["saved_view_notice"] = _delete_named_view(name, username)
 
 
 def _clear_fresh_filters() -> None:
@@ -3323,13 +3489,16 @@ def render_fresh_replenishment(
 
     display = pd.DataFrame(records)
 
-    table_height = min(560, 50 + 62 * len(display))
+    if len(display) <= 8:
+        table_height = min(560, 50 + 62 * len(display))
+    else:
+        table_height = 600
     components.html(_fresh_inventory_table_html(display), height=table_height)
     caption_col, export_col = st.columns([4.6, 1.0])
     with caption_col:
         st.caption(
             f"当前显示 {len(view):,} / {len(repl):,} 条；默认按紧急度、临期数量降序。"
-            f"库存与订货单位：{FRESH_UNIT}；表格支持点击表头排序，表头固定，可在表格内滚动。"
+            f"库存与订货单位：{FRESH_UNIT}；表格支持点击表头排序与分页，表头固定，可在表格内滚动。"
             f"临期 = 剩余保质期 ≤ {exp_threshold} 天；相关行浅橙高亮，"
             f"橙色“临期”标签表示需关注，绿色 ✓ 表示未临期。"
         )
@@ -3345,14 +3514,15 @@ def render_fresh_replenishment(
     with st.expander("分享与保存视图"):
         components.html(_share_view_html(share_query), height=100)
         st.divider()
+        username = str(st.session_state.get("auth_account", "") or "")
         can_save = _can_save_views()
-        can_delete = _can_delete_views()
+        can_delete = can_save  # 个人视图：计划员/管理员可管理自己的视图
         if not st.session_state.get("auth_logged_in"):
-            st.caption("保存 / 删除视图需要登录（计划员或管理员）；载入不受限。")
+            st.caption("保存 / 删除视图需要登录（计划员或管理员）；载入仅限当前账号的个人视图。")
         elif not can_save:
             st.caption("当前角色为查看者：保存 / 删除需要计划员或管理员权限。")
-        elif not can_delete:
-            st.caption("保存可用；删除已保存视图仅管理员可用。")
+        if username:
+            st.caption(f"当前账号：{username} · 仅显示你的个人视图")
         with st.form("save_view_form", clear_on_submit=True):
             new_name = st.text_input(
                 "视图名称",
@@ -3366,14 +3536,14 @@ def render_fresh_replenishment(
             )
         if saved:
             st.session_state["saved_view_notice"] = _save_named_view(
-                new_name, view_params
+                new_name, view_params, username
             )
 
         notice = st.session_state.pop("saved_view_notice", None)
         if notice:
             st.success(notice)
 
-        saved_views = _load_saved_views()
+        saved_views = _load_saved_views(username)
         if saved_views:
             names = list(saved_views)
             view_sig = abs(hash(tuple(names))) % 1_000_000
