@@ -15,10 +15,12 @@ Agent 对话复用 app/agent.py 的 run_turn()，不修改其对外接口。
 from __future__ import annotations
 
 import base64
+import hmac
 import html
 import io
 import json
 import math
+import os
 import re
 import sys
 import time
@@ -2449,6 +2451,7 @@ def render_decision_log_panel(view: pd.DataFrame, snapshot: str) -> None:
         st.info("当前筛选没有可记录的序列。")
         return
 
+    can_write = bool(st.session_state.get("auth_logged_in"))
     ratio_labels = {
         0.5: "半量（0.5 倍）",
         0.75: "七五折（0.75 倍）",
@@ -2481,7 +2484,10 @@ def render_decision_log_panel(view: pd.DataFrame, snapshot: str) -> None:
         type="primary",
         key="decision_confirm",
         use_container_width=True,
+        disabled=not can_write,
     )
+    if not can_write:
+        st.caption("写入决策留痕需要管理员登录：请点击右上角头像完成登录。")
 
     log_path = OUTPUT_DIR / "decision_log.csv"
     if clicked:
@@ -2578,6 +2584,102 @@ def _share_view_html(query: str) -> str:
       }})();
     </script>
     """
+
+
+SAVED_VIEWS_PATH = OUTPUT_DIR / "saved_views.json"
+
+
+def _load_saved_views() -> dict[str, dict]:
+    """读取本机命名视图；文件缺失或损坏时返回空字典，不让页面崩。"""
+    if not SAVED_VIEWS_PATH.exists():
+        return {}
+    try:
+        payload = json.loads(SAVED_VIEWS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    views = payload.get("views") if isinstance(payload, dict) else None
+    if not isinstance(views, dict):
+        return {}
+    return {
+        str(name): item for name, item in views.items() if isinstance(item, dict)
+    }
+
+
+def _write_saved_views(views: dict[str, dict]) -> None:
+    SAVED_VIEWS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SAVED_VIEWS_PATH.write_text(
+        json.dumps({"views": views}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _save_named_view(name: str, params: dict) -> str:
+    clean = str(name or "").strip()[:40]
+    if not clean:
+        return "请先填写视图名称。"
+    views = _load_saved_views()
+    updated = clean in views
+    views[clean] = dict(params)
+    _write_saved_views(views)
+    return f"{'已更新' if updated else '已保存'}视图「{clean}」。"
+
+
+def _delete_named_view(name: str) -> str:
+    views = _load_saved_views()
+    if name not in views:
+        return "视图不存在。"
+    del views[name]
+    _write_saved_views(views)
+    return f"已删除视图「{name}」。"
+
+
+def _sanitize_view_params(
+    params: dict,
+    store_options: list[int],
+    shelf_options: list[int],
+) -> dict:
+    """载入前按当前数据校验，避免历史视图里的门店/档位已不存在。"""
+    try:
+        store = int(params.get("store", 0) or 0)
+    except (TypeError, ValueError):
+        store = 0
+    if store not in store_options:
+        store = 0
+
+    urgency = [u for u in params.get("urgency", []) if u in URGENCY_RANK]
+    shelf: list[int] = []
+    for token in params.get("shelf", []) or []:
+        try:
+            value = int(token)
+        except (TypeError, ValueError):
+            continue
+        if value in shelf_options and value not in shelf:
+            shelf.append(value)
+
+    return {
+        "store": store,
+        "urgency": urgency,
+        "shelf": shelf,
+        "expiring": bool(params.get("expiring", False)),
+        "q": str(params.get("q", "") or ""),
+    }
+
+
+def _apply_saved_view(params: dict) -> None:
+    """载入已保存视图：回调在脚本重跑前写入各筛选控件的状态。"""
+    st.session_state["fresh_store_filter"] = int(params.get("store", 0) or 0)
+    st.session_state["fresh_urgency_filter_v2"] = list(
+        params.get("urgency", []) or []
+    )
+    st.session_state["fresh_shelf_filter_v2"] = [
+        int(x) for x in (params.get("shelf", []) or [])
+    ]
+    st.session_state["fresh_expiring_only"] = bool(params.get("expiring", False))
+    st.session_state["fresh_sku_search"] = str(params.get("q", "") or "")
+
+
+def _delete_saved_view_callback(name: str) -> None:
+    st.session_state["saved_view_notice"] = _delete_named_view(name)
 
 
 def _clear_fresh_filters() -> None:
@@ -2683,6 +2785,13 @@ def render_fresh_replenishment(
     if search_raw.strip():
         share_params["q"] = search_raw.strip()
     share_query = urlencode(share_params)
+    view_params = {
+        "store": int(store_sel),
+        "urgency": list(urgency_sel),
+        "shelf": [int(x) for x in shelf_sel],
+        "expiring": bool(expiring_only),
+        "q": search_raw.strip(),
+    }
 
     view = repl.copy()
     view["_label"] = [
@@ -2774,8 +2883,62 @@ def render_fresh_replenishment(
             key="fresh_export_view",
             use_container_width=True,
         )
-    with st.expander("分享当前视图"):
+    with st.expander("分享与保存视图"):
         components.html(_share_view_html(share_query), height=100)
+        st.divider()
+        can_write = bool(st.session_state.get("auth_logged_in"))
+        if not can_write:
+            st.caption("保存 / 删除视图需要管理员登录；载入视图不受限制。")
+        with st.form("save_view_form", clear_on_submit=True):
+            new_name = st.text_input(
+                "视图名称",
+                placeholder="例如：145 号店紧急清单",
+                key="saved_view_name_input",
+            )
+            saved = st.form_submit_button(
+                "保存当前视图",
+                disabled=not can_write,
+                use_container_width=True,
+            )
+        if saved:
+            st.session_state["saved_view_notice"] = _save_named_view(
+                new_name, view_params
+            )
+
+        notice = st.session_state.pop("saved_view_notice", None)
+        if notice:
+            st.success(notice)
+
+        saved_views = _load_saved_views()
+        if saved_views:
+            names = list(saved_views)
+            view_sig = abs(hash(tuple(names))) % 1_000_000
+            picked = st.selectbox(
+                "已保存视图",
+                options=names,
+                key=f"saved_view_pick_{view_sig}",
+            )
+            sanitized = _sanitize_view_params(
+                saved_views[picked], store_options, shelf_options
+            )
+            load_col, delete_col, _ = st.columns([1, 1, 3])
+            load_col.button(
+                "载入",
+                key=f"saved_view_load_{view_sig}",
+                on_click=_apply_saved_view,
+                args=(sanitized,),
+                use_container_width=True,
+            )
+            delete_col.button(
+                "删除",
+                key=f"saved_view_delete_{view_sig}",
+                on_click=_delete_saved_view_callback,
+                args=(picked,),
+                disabled=not can_write,
+                use_container_width=True,
+            )
+        else:
+            st.caption("还没有保存的视图；保存后会写在本机 output/saved_views.json。")
 
     render_trace_section(view, caps, config)
     render_decision_log_panel(view, snapshot)
@@ -3724,10 +3887,34 @@ def main_dataco() -> None:
 # ---------------------------------------------------------------------------
 # 主流程：生鲜前置仓（默认）
 # ---------------------------------------------------------------------------
+def _load_login_credentials() -> tuple[str, str]:
+    """管理员账号与口令：环境变量优先，其次项目根目录 .env，缺省用演示口令。"""
+    user = os.environ.get("APP_LOGIN_USER", "").strip()
+    password = os.environ.get("APP_LOGIN_PASSWORD", "").strip()
+    env_path = BASE_DIR / ".env"
+    if env_path.exists() and (not user or not password):
+        try:
+            for raw in env_path.read_text(encoding="utf-8-sig").splitlines():
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key == "APP_LOGIN_USER" and not user:
+                    user = value
+                elif key == "APP_LOGIN_PASSWORD" and not password:
+                    password = value
+        except OSError:
+            pass
+    return user or "店长", password or "zhilian2026"
+
+
 def _render_auth_controls() -> None:
-    """顶栏模拟登录：固定头像按钮 + 浮层登录/账户面板。
+    """顶栏登录：固定头像按钮 + 浮层登录/账户面板。
 
     Streamlit 1.30 没有 st.popover，这里用固定定位的浮层复刻同样的交互。
+    账号口令从 .env 读取，验证通过后才进入管理员会话。
     """
     st.session_state.setdefault("auth_logged_in", False)
     st.session_state.setdefault("auth_panel_open", False)
@@ -3754,12 +3941,12 @@ def _render_auth_controls() -> None:
             st.markdown(
                 '<div class="auth-panel-title">账户</div>'
                 '<div class="auth-user-row">'
-                '<span class="auth-avatar">店</span>'
-                '<div>'
-                '<div class="auth-user-name">管理员：店长</div>'
+                f'<span class="auth-avatar">{html.escape(account[:1])}</span>'
+                "<div>"
+                f'<div class="auth-user-name">管理员：{html.escape(account)}</div>'
                 f'<div class="auth-user-meta">账号：{html.escape(account)}</div>'
                 "</div></div>"
-                '<div class="auth-panel-note">当前为模拟登录状态</div>',
+                '<div class="auth-panel-note">已通过账号口令验证</div>',
                 unsafe_allow_html=True,
             )
             if st.button("退出登录", key="auth_logout", use_container_width=True):
@@ -3778,22 +3965,30 @@ def _render_auth_controls() -> None:
                     '<div class="auth-panel-title">登录 · 智链参谋</div>',
                     unsafe_allow_html=True,
                 )
-                st.caption("演示模式：任意账号密码均可登录")
+                st.caption("请输入项目 .env 中配置的管理员账号与口令。")
                 username = st.text_input(
                     "账号", key="auth_username", placeholder="例如：店长"
                 )
                 password = st.text_input(
-                    "密码", key="auth_password", type="password", placeholder="任意密码"
+                    "口令", key="auth_password", type="password", placeholder="请输入口令"
                 )
                 submitted = st.form_submit_button("登录", use_container_width=True)
                 if submitted:
-                    if username.strip() and password:
+                    expected_user, expected_password = _load_login_credentials()
+                    provided_user = username.strip()
+                    user_ok = hmac.compare_digest(
+                        provided_user.encode("utf-8"), expected_user.encode("utf-8")
+                    )
+                    password_ok = hmac.compare_digest(
+                        password.encode("utf-8"), expected_password.encode("utf-8")
+                    )
+                    if user_ok and password_ok:
                         st.session_state.auth_logged_in = True
-                        st.session_state.auth_account = username.strip()
+                        st.session_state.auth_account = provided_user
                         st.session_state.auth_panel_open = False
                         st.rerun()
                     else:
-                        st.error("请输入账号和密码")
+                        st.error("账号或口令不正确")
             if st.button("取消", key="auth_cancel", use_container_width=True):
                 st.session_state.auth_panel_open = False
                 st.rerun()
@@ -3820,11 +4015,13 @@ def render_top_navbar(snapshot: str) -> None:
         except ValueError:
             store_value = 0
     store_text = "全部门店" if store_value == 0 else f"{store_value} 号店"
-    auth_label = (
-        '<span class="nav-auth-label">管理员：店长</span>'
-        if st.session_state.get("auth_logged_in")
-        else ""
-    )
+    if st.session_state.get("auth_logged_in"):
+        account = str(st.session_state.get("auth_account", "店长") or "店长")
+        auth_label = (
+            f'<span class="nav-auth-label">管理员：{html.escape(account)}</span>'
+        )
+    else:
+        auth_label = ""
     st.markdown(
         '<header class="top-navbar">'
         '<div class="nav-left">'
