@@ -419,6 +419,11 @@ div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .s
   background: rgba(255, 255, 255, 0.08);
   text-shadow: 0 0 12px rgba(143, 212, 255, 0.8);
 }
+.nav-links a.active {
+  color: #ffffff;
+  background: rgba(143, 212, 255, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(143, 212, 255, 0.22);
+}
 .nav-right {
   display: flex; align-items: center; justify-content: flex-end;
   gap: 12px;
@@ -1621,7 +1626,8 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
         col_type = "num" if col in numeric_columns else "text"
         header_text = str(col).replace(f"（{FRESH_UNIT}）", "")
         headers.append(
-            f'<th data-type="{col_type}">{html.escape(header_text)}</th>'
+            f'<th scope="col" data-type="{col_type}">'
+            f"{html.escape(header_text)}</th>"
         )
 
     rows = []
@@ -1718,6 +1724,10 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
   thead th:last-child { border-radius: 0 9px 9px 0; }
   thead th.sorted-asc::after { content: " ▲"; color: #8FD4FF; font-size: 10px; }
   thead th.sorted-desc::after { content: " ▼"; color: #8FD4FF; font-size: 10px; }
+  thead th:focus-visible {
+    outline: 2px solid #8FD4FF;
+    outline-offset: -2px;
+  }
   tbody td {
     background: #FFFFFF;
     padding: 12px 11px;
@@ -1773,13 +1783,21 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
       var sortDirection = 1;
 
       headers.forEach(function (th, index) {
-        th.addEventListener("click", function () {
+        th.setAttribute("tabindex", "0");
+        th.setAttribute("aria-sort", "none");
+
+        function applySort() {
           if (sortIndex === index) sortDirection *= -1;
           else { sortIndex = index; sortDirection = 1; }
           headers.forEach(function (h) {
             h.classList.remove("sorted-asc", "sorted-desc");
+            h.setAttribute("aria-sort", "none");
           });
           th.classList.add(sortDirection === 1 ? "sorted-asc" : "sorted-desc");
+          th.setAttribute(
+            "aria-sort",
+            sortDirection === 1 ? "ascending" : "descending"
+          );
           var rows = Array.prototype.slice.call(tbody.querySelectorAll("tr"));
           var numeric = th.getAttribute("data-type") === "num";
           rows.sort(function (a, b) {
@@ -1791,6 +1809,14 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
             return String(av).localeCompare(String(bv), "zh-CN") * sortDirection;
           });
           rows.forEach(function (row) { tbody.appendChild(row); });
+        }
+
+        th.addEventListener("click", applySort);
+        th.addEventListener("keydown", function (event) {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            applySort();
+          }
         });
       });
     })();
@@ -2415,6 +2441,15 @@ def render_decision_log_panel(view: pd.DataFrame, snapshot: str) -> None:
             )
 
 
+def _clear_fresh_filters() -> None:
+    """清空补货清单的全部筛选条件；作为按钮回调，在脚本重跑前执行。"""
+    st.session_state["fresh_store_filter"] = 0
+    st.session_state["fresh_urgency_filter_v2"] = []
+    st.session_state["fresh_shelf_filter_v2"] = []
+    st.session_state["fresh_expiring_only"] = False
+    st.session_state["fresh_sku_search"] = ""
+
+
 def render_fresh_replenishment(
     repl: pd.DataFrame,
     caps: dict[tuple[int, int], dict],
@@ -2512,6 +2547,11 @@ def render_fresh_replenishment(
                 "当前筛选条件下没有匹配的序列。可以放宽紧急度或保质期筛选，"
                 "或清空搜索词后重试。"
             )
+        st.button(
+            "清除全部筛选",
+            key="fresh_clear_filters_empty",
+            on_click=_clear_fresh_filters,
+        )
         _render_data_import()
         _render_cap_sweep(cap_sweep, config, repl)
         return
@@ -3743,6 +3783,72 @@ def render_data_status(
     )
 
 
+def _inject_nav_scrollspy() -> None:
+    """顶栏导航随滚动高亮当前区块：只切换 class，不改任何布局。"""
+    parent_js = r"""
+        (function () {
+          function update() {
+            var links = Array.prototype.slice.call(
+              document.querySelectorAll(".nav-links a")
+            );
+            if (!links.length) return;
+            var ids = links.map(function (a) {
+              return (a.getAttribute("href") || "").slice(1);
+            });
+            var best = null;
+            var bestTop = -1e9;
+            ids.forEach(function (id) {
+              var el = document.getElementById(id);
+              if (!el) return;
+              var top = el.getBoundingClientRect().top;
+              if (top <= 120 && top > bestTop) {
+                bestTop = top;
+                best = id;
+              }
+            });
+            var scroller =
+              document.querySelector("section.main") ||
+              document.querySelector('[data-testid="stMain"]');
+            if (
+              scroller &&
+              scroller.scrollTop + scroller.clientHeight >=
+                scroller.scrollHeight - 4
+            ) {
+              best = ids[ids.length - 1];
+            }
+            if (!best) best = ids[0];
+            links.forEach(function (a) {
+              a.classList.toggle("active", a.getAttribute("href") === "#" + best);
+            });
+          }
+          window.__navSpyUpdate = update;
+          if (!window.__navSpyBound) {
+            window.__navSpyBound = true;
+            document.addEventListener("scroll", update, true);
+            window.addEventListener("scroll", update, { passive: true });
+            window.addEventListener("resize", update);
+          }
+          update();
+        })();
+        """
+    bootstrap = (
+        "<script>(function(){"
+        "var doc=window.parent.document;"
+        "if(!doc||!doc.body)return;"
+        "if(doc.getElementById('nav-scrollspy-runtime')){"
+        "if(typeof window.parent.__navSpyUpdate==='function')"
+        "window.parent.__navSpyUpdate();"
+        "return;"
+        "}"
+        "var s=doc.createElement('script');"
+        "s.id='nav-scrollspy-runtime';"
+        "s.textContent=" + json.dumps(parent_js) + ";"
+        "(doc.body||doc.documentElement).appendChild(s);"
+        "})();</script>"
+    )
+    components.html(bootstrap, height=0)
+
+
 def main_fresh() -> None:
     repl = load_csv(FRESH_REPL)
     forecast = load_csv(FRESH_FORECAST)
@@ -3792,6 +3898,7 @@ def main_fresh() -> None:
         placeholder="问生鲜补货问题，例如：SKU 145-802 该补多少？",
         source_note=f"数据来源：补货快照 {snapshot}",
     )
+    _inject_nav_scrollspy()
 
 
 def _inject_floating_assistant() -> None:
