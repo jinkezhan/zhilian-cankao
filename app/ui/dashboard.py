@@ -15,6 +15,7 @@ Agent 对话复用 app/agent.py 的 run_turn()，不修改其对外接口。
 from __future__ import annotations
 
 import base64
+import hashlib
 import hmac
 import html
 import io
@@ -36,7 +37,10 @@ APP_DIR = Path(__file__).resolve().parents[1]
 BASE_DIR = APP_DIR.parent
 OUTPUT_DIR = BASE_DIR / "output"
 CONFIG_PATH = BASE_DIR / "config" / "freshretail_inventory.yaml"
+USERS_CONFIG_PATH = BASE_DIR / "config" / "users.yaml"
 ASSET_DIR = Path(__file__).resolve().parent / "assets"
+ROLE_LABELS = {"admin": "管理员", "planner": "计划员", "viewer": "查看者"}
+SESSION_HOURS = 8
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
@@ -2569,7 +2573,7 @@ def render_decision_log_panel(view: pd.DataFrame, snapshot: str) -> None:
         st.info("当前筛选没有可记录的序列。")
         return
 
-    can_write = bool(st.session_state.get("auth_logged_in"))
+    can_write = _can_write_decisions()
     ratio_labels = {
         0.5: "半量（0.5 倍）",
         0.75: "七五折（0.75 倍）",
@@ -2605,7 +2609,13 @@ def render_decision_log_panel(view: pd.DataFrame, snapshot: str) -> None:
         disabled=not can_write,
     )
     if not can_write:
-        st.caption("写入决策留痕需要管理员登录：请点击右上角头像完成登录。")
+        if st.session_state.get("auth_logged_in"):
+            st.caption(
+                f"当前角色为{_role_label(_current_role())}，"
+                "写入决策留痕需要计划员或管理员权限。"
+            )
+        else:
+            st.caption("写入决策留痕需要登录：请点击右上角头像。")
 
     log_path = OUTPUT_DIR / "decision_log.csv"
     if clicked:
@@ -3004,9 +3014,14 @@ def render_fresh_replenishment(
     with st.expander("分享与保存视图"):
         components.html(_share_view_html(share_query), height=100)
         st.divider()
-        can_write = bool(st.session_state.get("auth_logged_in"))
-        if not can_write:
-            st.caption("保存 / 删除视图需要管理员登录；载入视图不受限制。")
+        can_save = _can_save_views()
+        can_delete = _can_delete_views()
+        if not st.session_state.get("auth_logged_in"):
+            st.caption("保存 / 删除视图需要登录（计划员或管理员）；载入不受限。")
+        elif not can_save:
+            st.caption("当前角色为查看者：保存 / 删除需要计划员或管理员权限。")
+        elif not can_delete:
+            st.caption("保存可用；删除已保存视图仅管理员可用。")
         with st.form("save_view_form", clear_on_submit=True):
             new_name = st.text_input(
                 "视图名称",
@@ -3015,7 +3030,7 @@ def render_fresh_replenishment(
             )
             saved = st.form_submit_button(
                 "保存当前视图",
-                disabled=not can_write,
+                disabled=not can_save,
                 use_container_width=True,
             )
         if saved:
@@ -3052,7 +3067,7 @@ def render_fresh_replenishment(
                 key=f"saved_view_delete_{view_sig}",
                 on_click=_delete_saved_view_callback,
                 args=(picked,),
-                disabled=not can_write,
+                disabled=not can_delete,
                 use_container_width=True,
             )
         else:
@@ -4028,11 +4043,181 @@ def _load_login_credentials() -> tuple[str, str]:
     return user or "店长", password or "zhilian2026"
 
 
+def _load_users() -> dict[str, dict]:
+    """读取 config/users.yaml；缺失时回退到 .env 单账号（兼容旧配置）。"""
+    if USERS_CONFIG_PATH.exists():
+        try:
+            data = yaml.safe_load(
+                USERS_CONFIG_PATH.read_text(encoding="utf-8")
+            ) or {}
+        except Exception:
+            data = {}
+        items = data.get("users") if isinstance(data, dict) else None
+        users: dict[str, dict] = {}
+        if isinstance(items, list):
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("username", "")).strip()
+                if not name:
+                    continue
+                users[name] = {
+                    "role": str(item.get("role", "viewer")).strip() or "viewer",
+                    "password_hash": str(item.get("password_hash", "")).strip(),
+                }
+        if users:
+            return users
+    user, password = _load_login_credentials()
+    return {user: {"role": "admin", "password_hash": "", "password": password}}
+
+
+def _verify_password(record: dict, password: str) -> bool:
+    hashed = str(record.get("password_hash", "")).strip()
+    if hashed:
+        try:
+            algo, iterations, salt_hex, digest_hex = hashed.split("$")
+            if algo != "pbkdf2_sha256":
+                return False
+            salt = bytes.fromhex(salt_hex)
+            expected = bytes.fromhex(digest_hex)
+            actual = hashlib.pbkdf2_hmac(
+                "sha256", password.encode("utf-8"), salt, int(iterations)
+            )
+            return hmac.compare_digest(actual, expected)
+        except (ValueError, TypeError):
+            return False
+    plain = str(record.get("password", ""))
+    return bool(plain) and hmac.compare_digest(
+        password.encode("utf-8"), plain.encode("utf-8")
+    )
+
+
+def _authenticate(username: str, password: str) -> tuple[str, str] | None:
+    record = _load_users().get(username)
+    if record is None or not _verify_password(record, password):
+        return None
+    return username, str(record.get("role", "viewer"))
+
+
+def _session_secret() -> str:
+    secret = os.environ.get("APP_SESSION_SECRET", "").strip()
+    if secret:
+        return secret
+    env_path = BASE_DIR / ".env"
+    if env_path.exists():
+        try:
+            for raw in env_path.read_text(encoding="utf-8-sig").splitlines():
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                if key.strip() == "APP_SESSION_SECRET":
+                    return value.strip().strip('"').strip("'")
+        except OSError:
+            pass
+    return "zhilian-demo-session-secret"
+
+
+def _issue_auth_token(username: str) -> str:
+    payload = (
+        base64.urlsafe_b64encode(
+            json.dumps(
+                {"u": username, "e": int(time.time()) + SESSION_HOURS * 3600},
+                ensure_ascii=False,
+            ).encode("utf-8")
+        )
+        .decode("ascii")
+        .rstrip("=")
+    )
+    signature = hmac.new(
+        _session_secret().encode("utf-8"),
+        payload.encode("ascii"),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"{payload}.{signature}"
+
+
+def _verify_auth_token(token: str) -> str | None:
+    try:
+        payload, signature = token.rsplit(".", 1)
+        expected = hmac.new(
+            _session_secret().encode("utf-8"),
+            payload.encode("ascii"),
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(signature, expected):
+            return None
+        padded = payload + "=" * (-len(payload) % 4)
+        data = json.loads(
+            base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8")
+        )
+        if int(data.get("e", 0)) < int(time.time()):
+            return None
+        username = str(data.get("u", ""))
+        if username not in _load_users():
+            return None
+        return username
+    except Exception:
+        return None
+
+
+def _clear_auth_token() -> None:
+    """退出登录：让下一次脚本开始时把地址栏 token 置空。"""
+    st.session_state["auth_token_pending"] = ""
+
+
+def _apply_pending_auth_token() -> None:
+    """在脚本正常开始时写入 token；紧跟 st.rerun 的写入在 1.30 会丢失。"""
+    pending = st.session_state.pop("auth_token_pending", None)
+    if pending is None:
+        return
+    try:
+        st.query_params["auth"] = pending
+    except Exception:
+        pass
+
+
+def _restore_session_from_token() -> None:
+    """刷新页面后用签名 token 恢复登录态；token 只含用户名与过期时间。"""
+    if st.session_state.get("auth_logged_in"):
+        return
+    token = _query_value("auth")
+    if not token:
+        return
+    username = _verify_auth_token(token)
+    if not username:
+        return
+    record = _load_users().get(username, {})
+    st.session_state["auth_logged_in"] = True
+    st.session_state["auth_account"] = username
+    st.session_state["auth_role"] = str(record.get("role", "viewer"))
+
+
+def _current_role() -> str:
+    return str(st.session_state.get("auth_role", "viewer") or "viewer")
+
+
+def _role_label(role: str) -> str:
+    return ROLE_LABELS.get(role, role)
+
+
+def _can_write_decisions() -> bool:
+    return _current_role() in ("admin", "planner")
+
+
+def _can_save_views() -> bool:
+    return _current_role() in ("admin", "planner")
+
+
+def _can_delete_views() -> bool:
+    return _current_role() == "admin"
+
+
 def _render_auth_controls() -> None:
     """顶栏登录：固定头像按钮 + 浮层登录/账户面板。
 
     Streamlit 1.30 没有 st.popover，这里用固定定位的浮层复刻同样的交互。
-    账号口令从 .env 读取，验证通过后才进入管理员会话。
+    账号口令从 config/users.yaml 读取并校验哈希，验证通过后进入对应角色。
     """
     st.session_state.setdefault("auth_logged_in", False)
     st.session_state.setdefault("auth_panel_open", False)
@@ -4056,13 +4241,17 @@ def _render_auth_controls() -> None:
         st.markdown('<span class="auth-panel-anchor"></span>', unsafe_allow_html=True)
         if logged_in:
             account = str(st.session_state.get("auth_account", "店长"))
+            role = _current_role()
+            role_label = _role_label(role)
             st.markdown(
                 '<div class="auth-panel-title">账户</div>'
                 '<div class="auth-user-row">'
                 f'<span class="auth-avatar">{html.escape(account[:1])}</span>'
                 "<div>"
-                f'<div class="auth-user-name">管理员：{html.escape(account)}</div>'
-                f'<div class="auth-user-meta">账号：{html.escape(account)}</div>'
+                f'<div class="auth-user-name">{html.escape(role_label)}：'
+                f"{html.escape(account)}</div>"
+                f'<div class="auth-user-meta">账号：{html.escape(account)}'
+                f" · 角色：{html.escape(role_label)}</div>"
                 "</div></div>"
                 '<div class="auth-panel-note">已通过账号口令验证</div>',
                 unsafe_allow_html=True,
@@ -4071,11 +4260,13 @@ def _render_auth_controls() -> None:
                 for key in (
                     "auth_logged_in",
                     "auth_account",
+                    "auth_role",
                     "auth_panel_open",
                     "auth_username",
                     "auth_password",
                 ):
                     st.session_state.pop(key, None)
+                _clear_auth_token()
                 st.rerun()
         else:
             with st.form("nav_login_form", clear_on_submit=False):
@@ -4083,7 +4274,7 @@ def _render_auth_controls() -> None:
                     '<div class="auth-panel-title">登录 · 智链参谋</div>',
                     unsafe_allow_html=True,
                 )
-                st.caption("请输入项目 .env 中配置的管理员账号与口令。")
+                st.caption("请输入账号与口令，角色由账号决定。")
                 username = st.text_input(
                     "账号", key="auth_username", placeholder="例如：店长"
                 )
@@ -4092,18 +4283,16 @@ def _render_auth_controls() -> None:
                 )
                 submitted = st.form_submit_button("登录", use_container_width=True)
                 if submitted:
-                    expected_user, expected_password = _load_login_credentials()
-                    provided_user = username.strip()
-                    user_ok = hmac.compare_digest(
-                        provided_user.encode("utf-8"), expected_user.encode("utf-8")
-                    )
-                    password_ok = hmac.compare_digest(
-                        password.encode("utf-8"), expected_password.encode("utf-8")
-                    )
-                    if user_ok and password_ok:
+                    auth = _authenticate(username.strip(), password)
+                    if auth is not None:
+                        user_name, role = auth
                         st.session_state.auth_logged_in = True
-                        st.session_state.auth_account = provided_user
+                        st.session_state.auth_account = user_name
+                        st.session_state.auth_role = role
                         st.session_state.auth_panel_open = False
+                        st.session_state["auth_token_pending"] = _issue_auth_token(
+                            user_name
+                        )
                         st.rerun()
                     else:
                         st.error("账号或口令不正确")
@@ -4136,7 +4325,8 @@ def render_top_navbar(snapshot: str) -> None:
     if st.session_state.get("auth_logged_in"):
         account = str(st.session_state.get("auth_account", "店长") or "店长")
         auth_label = (
-            f'<span class="nav-auth-label">管理员：{html.escape(account)}</span>'
+            f'<span class="nav-auth-label">{html.escape(_role_label(_current_role()))}：'
+            f"{html.escape(account)}</span>"
         )
     else:
         auth_label = ""
@@ -5011,6 +5201,8 @@ def render_global_ai(dataset: str) -> None:
 
 
 def main() -> None:
+    _apply_pending_auth_token()
+    _restore_session_from_token()
     _scroll_page_to_top_once()
     st.session_state.setdefault("source_mode", "fresh")
     _render_sidebar_nav()
