@@ -2442,12 +2442,12 @@ def _trace_alpha(shelf_life: int) -> None:
 
 
 def render_trace_section(
-    view: pd.DataFrame,
+    repl: pd.DataFrame,
     caps: dict[tuple[int, int], dict],
     config: dict,
 ) -> None:
     """表格下方的溯源区：选序列 -> 三个分页展示计算依据。"""
-    if view is None or view.empty:
+    if repl is None or repl.empty:
         return
 
     rep_cfg = (config or {}).get("replenishment", {}) or {}
@@ -2461,6 +2461,10 @@ def render_trace_section(
     )
 
     st.divider()
+    st.markdown(
+        '<div id="section-trace" style="scroll-margin-top: 80px;"></div>',
+        unsafe_allow_html=True,
+    )
     st.markdown("#### 决策溯源")
     st.caption(
         "选择一条序列：① 订货量怎么算出来的；② 不照做会怎样；"
@@ -2468,7 +2472,7 @@ def render_trace_section(
     )
 
     rows_by_key = {
-        (int(row.store_id), int(row.product_id)): row for row in view.itertuples()
+        (int(row.store_id), int(row.product_id)): row for row in repl.itertuples()
     }
     options = list(rows_by_key)
 
@@ -2476,16 +2480,27 @@ def render_trace_section(
         tier = str(getattr(rows_by_key[key], "urgency", ""))
         return f"{series_label(*key)} · {tier}" if tier else series_label(*key)
 
-    # 用筛选后的选项指纹做 key：筛选变化时自动换 key、重置选择，
-    # 既保留同一筛选下的选中状态，又避免旧索引越界。
+    # 用选项指纹做 key，保留同一组选项下的选中状态。
     option_sig = abs(hash(tuple(options))) % 1_000_000
+    select_key = f"fresh_trace_select_{option_sig}"
+    deep_sku = _parse_sku_param()
+    if deep_sku is None:
+        st.session_state.pop("fresh_deep_link_applied", None)
+    elif deep_sku in rows_by_key:
+        if st.session_state.get("fresh_deep_link_applied") != deep_sku:
+            st.session_state[select_key] = deep_sku
+            st.session_state["fresh_deep_link_applied"] = deep_sku
+    else:
+        st.warning(
+            f"深链接中的 SKU {deep_sku[0]}-{deep_sku[1]} 不在当前数据中。"
+        )
     choice = st.selectbox(
         "选择要溯源的序列",
         options=options,
         index=None,
         format_func=_label,
         placeholder="选择店 × SKU（默认不展开）",
-        key=f"fresh_trace_select_{option_sig}",
+        key=select_key,
     )
     if choice is None:
         return
@@ -2508,6 +2523,14 @@ def render_trace_section(
         f"**{series_label(*key)}** · 建议订货 **{row['suggest_qty']:,}** 件"
         f"（紧急度 {row['urgency']}）"
     )
+    with st.expander("复制 SKU 深链接"):
+        components.html(
+            _share_view_html(
+                f"sku={key[0]}-{key[1]}",
+                "SKU 深链接 · 复制后打开会直接定位到该 SKU 的决策溯源",
+            ),
+            height=100,
+        )
 
     # 行内问 AI：只针对当前选中的这条序列，不影响下方聊天区。
     target_eff = (
@@ -3108,14 +3131,29 @@ def _query_value(name: str, default: str = "") -> str:
     return default if value is None else str(value)
 
 
-def _share_view_html(query: str) -> str:
-    """分享卡片：把当前筛选条件拼成完整 URL，支持一键复制。"""
+def _parse_sku_param() -> tuple[int, int] | None:
+    """解析 ?sku=145-802 / SKU 145-802 / 145_802 形式的深链接。"""
+    raw = _query_value("sku").strip()
+    if not raw:
+        return None
+    raw = re.sub(r"^SKU\s*", "", raw, flags=re.IGNORECASE).strip()
+    match = re.match(r"^(\d+)\s*[-_/ ]\s*(\d+)$", raw)
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
+def _share_view_html(
+    query: str,
+    hint: str = "分享链接 · 复制后在新标签页打开，即可恢复当前筛选",
+) -> str:
+    """分享卡片：把 query 拼成完整 URL，支持一键复制。"""
     return f"""
     <div style="font-family:'Microsoft YaHei','PingFang SC','Segoe UI',sans-serif;
                 color:#0b0b0b;background:#fcfcfb;border:1px solid #e1e0d9;
                 border-radius:12px;padding:12px 14px;">
       <div style="font-size:11.5px;color:#898781;margin-bottom:8px;">
-        分享链接 · 复制后在新标签页打开，即可恢复当前筛选
+        {html.escape(hint)}
       </div>
       <div style="display:flex;gap:8px;align-items:center;">
         <input id="share-url" readonly
@@ -3742,7 +3780,7 @@ def render_fresh_replenishment(
         else:
             st.caption("PDF 生成暂不可用")
 
-    render_trace_section(view, caps, config)
+    render_trace_section(repl, caps, config)
     render_order_panel(view, snapshot)
     _render_data_import()
     _render_cap_sweep(cap_sweep, config, repl)
@@ -5345,6 +5383,7 @@ def main_fresh() -> None:
         render_fresh_replenishment(
             repl, caps, cap_sweep, config, snapshot, values
         )
+        _scroll_to_deep_link_once()
         st.divider()
         st.markdown('<div id="section-forecast"></div>', unsafe_allow_html=True)
         render_fresh_detail(repl, forecast, summary, config, caps, snapshot)
@@ -5765,6 +5804,34 @@ def _scroll_page_to_top_once() -> None:
           resetTop();
           [50, 200, 500].forEach(function (ms) {
             window.setTimeout(resetTop, ms);
+          });
+        })();
+        </script>
+        """,
+        height=0,
+    )
+
+
+def _scroll_to_deep_link_once() -> None:
+    """?sku=... 首次打开时滚动到溯源区；顶部回滚脚本在 500ms，这里更晚。"""
+    if not _query_value("sku"):
+        return
+    if st.session_state.get("_deep_link_scrolled"):
+        return
+    st.session_state["_deep_link_scrolled"] = True
+    components.html(
+        """
+        <script>
+        (function () {
+          function go() {
+            try {
+              const doc = window.parent.document;
+              const el = doc.getElementById("section-trace");
+              if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+            } catch (e) {}
+          }
+          [700, 1100, 1600].forEach(function (ms) {
+            window.setTimeout(go, ms);
           });
         })();
         </script>
