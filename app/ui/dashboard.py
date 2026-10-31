@@ -446,6 +446,11 @@ div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .s
   font-size: 10.5px; letter-spacing: .06em; white-space: nowrap;
 }
 .nav-store-control { position: relative; display: inline-flex; align-items: center; }
+.nav-store-value {
+  color: #ffffff; font-size: 12.5px; font-weight: 600;
+  white-space: nowrap; max-width: 150px;
+  overflow: hidden; text-overflow: ellipsis;
+}
 .nav-store-select {
   appearance: none; -webkit-appearance: none;
   max-width: 138px;
@@ -821,6 +826,42 @@ div[data-testid="stHorizontalBlock"]:has(.source-egg-anchor) > div[data-testid="
   .fresh-hero-panel:nth-child(3) { display: none; }
   .fresh-hero-copy { padding: 30px 24px; }
   .fresh-hero-copy h1 { font-size: 24px; }
+}
+
+/* ---------- 数据新鲜度 ---------- */
+.data-status {
+  display: flex; justify-content: flex-end; align-items: center;
+  gap: 7px; margin: -6px 2px 18px;
+  color: #8a9bb0; font-size: 11.5px; letter-spacing: .01em;
+}
+.data-status .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #2E9E5B; box-shadow: 0 0 6px rgba(46, 158, 91, .45);
+  flex: 0 0 auto;
+}
+.data-status.warn .dot {
+  background: #D98A1F; box-shadow: 0 0 6px rgba(217, 138, 31, .45);
+}
+.data-status b { color: #6b7f94; font-weight: 600; }
+
+/* ---------- 导出按钮：与工具条同一套视觉 ---------- */
+div[data-testid="stDownloadButton"] button {
+  height: 34px;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 9px;
+  border: 1px solid #DCE7F3;
+  background: #FFFFFF;
+  color: #1E6FB8;
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(11, 42, 74, .04);
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+div[data-testid="stDownloadButton"] button:hover {
+  border-color: #9CC0DF;
+  background: #F6FAFE;
+  color: #185A96;
 }
 
 </style>
@@ -2394,7 +2435,18 @@ def render_fresh_replenishment(
     rep_cfg = (config or {}).get("replenishment", {}) or {}
     exp_threshold = int(rep_cfg.get("expiring_threshold_days", 1))
 
-    f1, f2, f3, f4 = st.columns([1.4, 1.2, 0.9, 1.5])
+    f_store, f1, f2, f3, f4 = st.columns([1.15, 1.15, 1.0, 0.85, 1.35])
+    store_options = sorted(
+        {int(x) for x in pd.to_numeric(repl["store_id"], errors="coerce").dropna()}
+    )
+    store_sel = f_store.selectbox(
+        "门店",
+        options=[0, *store_options],
+        index=0,
+        format_func=lambda s: "全部门店" if s == 0 else f"{s} 号店",
+        help="仅筛选下方补货清单、溯源与留痕；顶部 KPI 仍为全局总览。",
+        key="fresh_store_filter",
+    )
     urgency_options = list(URGENCY_RANK.keys())
     urgency_sel = f1.multiselect(
         "紧急度（多选）",
@@ -2425,6 +2477,8 @@ def render_fresh_replenishment(
     view["_label"] = [
         series_label(s, p) for s, p in zip(view["store_id"], view["product_id"])
     ]
+    if store_sel:
+        view = view[pd.to_numeric(view["store_id"], errors="coerce") == store_sel]
     # 空选择 = 不过滤，保留全部；只有用户主动选的标签才参与过滤。
     if urgency_sel:
         view = view[view["urgency"].isin(urgency_sel)]
@@ -2485,13 +2539,25 @@ def render_fresh_replenishment(
 
     display = pd.DataFrame(records)
 
-    components.html(_fresh_inventory_table_html(display), height=560)
-    st.caption(
-        f"当前显示 {len(view):,} / {len(repl):,} 条；默认按紧急度、临期数量降序。"
-        f"库存与订货单位：{FRESH_UNIT}；表格支持点击表头排序，最大高度 500px，可在表格内滚动。"
-        f"临期 = 剩余保质期 ≤ {exp_threshold} 天；相关行浅橙高亮，"
-        f"橙色“临期”标签表示需关注，绿色 ✓ 表示未临期。"
-    )
+    table_height = min(560, 50 + 62 * len(display))
+    components.html(_fresh_inventory_table_html(display), height=table_height)
+    caption_col, export_col = st.columns([4.6, 1.0])
+    with caption_col:
+        st.caption(
+            f"当前显示 {len(view):,} / {len(repl):,} 条；默认按紧急度、临期数量降序。"
+            f"库存与订货单位：{FRESH_UNIT}；表格支持点击表头排序，最大高度 500px，可在表格内滚动。"
+            f"临期 = 剩余保质期 ≤ {exp_threshold} 天；相关行浅橙高亮，"
+            f"橙色“临期”标签表示需关注，绿色 ✓ 表示未临期。"
+        )
+    with export_col:
+        st.download_button(
+            "导出 CSV",
+            data=display.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"补货清单_{snapshot}.csv",
+            mime="text/csv",
+            key="fresh_export_view",
+            use_container_width=True,
+        )
 
     render_trace_section(view, caps, config)
     render_decision_log_panel(view, snapshot)
@@ -3527,6 +3593,8 @@ def render_top_navbar(snapshot: str) -> None:
         else pd.Timestamp.today().strftime("%Y-%m-%d")
     )
     st.session_state.setdefault("auth_logged_in", False)
+    store_value = int(st.session_state.get("fresh_store_filter", 0) or 0)
+    store_text = "全部门店" if store_value == 0 else f"{store_value} 号店"
     auth_label = (
         '<span class="nav-auth-label">管理员：店长</span>'
         if st.session_state.get("auth_logged_in")
@@ -3545,17 +3613,10 @@ def render_top_navbar(snapshot: str) -> None:
         '<a href="#section-agent">智能问答</a>'
         "</nav>"
         '<div class="nav-right">'
-        '<label class="nav-store">'
+        '<span class="nav-store">'
         '<span class="nav-store-label">当前门店</span>'
-        '<span class="nav-store-control">'
-        '<select class="nav-store-select" aria-label="选择当前门店">'
-        "<option>上海浦东前置仓</option>"
-        "<option>杭州滨江前置仓</option>"
-        "<option>苏州工业园前置仓</option>"
-        "</select>"
-        '<span class="nav-store-caret">▾</span>'
+        f'<span class="nav-store-value">{html.escape(store_text)}</span>'
         "</span>"
-        "</label>"
         f'<span class="nav-date">{html.escape(str(date_text))}</span>'
         + auth_label
         + '<span class="nav-auth-slot"></span>'
@@ -3629,6 +3690,59 @@ def render_daily_brief(repl: pd.DataFrame | None, snapshot: str) -> None:
     )
 
 
+def render_data_status(
+    repl: pd.DataFrame | None,
+    forecast: pd.DataFrame | None,
+    config: dict,
+    snapshot: str,
+) -> None:
+    """KPI 下方一行小字：数据截止日、快照文件生成时间与序列齐全性。"""
+    if repl is None or repl.empty:
+        return
+
+    paths = [OUTPUT_DIR / FRESH_REPL, OUTPUT_DIR / FRESH_FORECAST]
+    stamps = [path.stat().st_mtime for path in paths if path.exists()]
+    updated = (
+        pd.Timestamp.fromtimestamp(max(stamps)).strftime("%m-%d %H:%M")
+        if stamps
+        else "未知"
+    )
+
+    expected = int(
+        ((config or {}).get("validation", {}) or {}).get(
+            "expected_series", len(repl)
+        )
+    )
+    series_ok = len(repl) == expected
+    forecast_ok = True
+    if (
+        forecast is not None
+        and not forecast.empty
+        and {"store_id", "product_id"} <= set(forecast.columns)
+    ):
+        forecast_ok = (
+            forecast[["store_id", "product_id"]].drop_duplicates().shape[0] == expected
+        )
+
+    if series_ok and forecast_ok:
+        detail = f"{len(repl):,} 条序列校验通过"
+    elif not series_ok:
+        detail = f"序列数异常（{len(repl):,} / 期望 {expected:,}）"
+    else:
+        detail = "预测表序列数与补货快照不一致"
+
+    warn_class = "" if series_ok and forecast_ok else " warn"
+    st.markdown(
+        f'<div class="data-status{warn_class}">'
+        '<span class="dot"></span>'
+        f"<span>数据截至 <b>{html.escape(str(snapshot))}</b>"
+        f" · 快照生成 {html.escape(updated)}"
+        f" · {html.escape(detail)}</span>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+
 def main_fresh() -> None:
     repl = load_csv(FRESH_REPL)
     forecast = load_csv(FRESH_FORECAST)
@@ -3657,6 +3771,7 @@ def main_fresh() -> None:
         values = fresh_kpi_values(repl, comparison)
         log_fresh_kpi(values, snapshot)
         render_fresh_kpi(values, snapshot, metrics)
+        render_data_status(repl, forecast, config, snapshot)
         st.divider()
         st.markdown('<div id="section-inventory"></div>', unsafe_allow_html=True)
         render_fresh_replenishment(repl, caps, cap_sweep, config, snapshot)
