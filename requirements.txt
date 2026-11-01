@@ -1,14 +1,9 @@
-# 智链参谋 —— 项目依赖（Python 3.14.8 / Windows / .venv 实测通过）
-# 重装环境：.venv\Scripts\python.exe -m pip install -r requirements.txt
-pandas==3.1.0
-numpy==2.5.4
-openpyxl==3.1.5
-pyarrow==26.0.0
-matplotlib==3.11.2
-scikit-learn==1.9.1
-lightgbm==4.7.0
-streamlit==1.66.1
-# 生鲜线库存仿真配置读取（config/freshretail_inventory.yaml）
-PyYAML==6.0.3
-# app/agent.py 调用 DeepSeek HTTP 接口
+# 智链参谋 · Streamlit Community Cloud 部署依赖
+# Python 3.11 实测版本（与当前 Windows 运行环境一致）
+streamlit==1.30.0
+pandas==2.1.4
+numpy==1.26.4
+openpyxl==3.0.10
+matplotlib==3.8.0
+PyYAML==6.0.1
 requests==2.31.0

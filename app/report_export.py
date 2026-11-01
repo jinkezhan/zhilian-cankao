@@ -283,6 +283,8 @@ def build_pdf_report(
 
         plt.rcParams["font.sans-serif"] = [
             "Microsoft YaHei",
+            "Noto Sans CJK SC",
+            "Noto Sans CJK JP",
             "SimHei",
             "Arial Unicode MS",
             "DejaVu Sans",

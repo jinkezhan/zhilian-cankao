@@ -122,6 +122,42 @@ acceptance:
   # 报告“最差序列诊断”展示的条数
   report_top_n_worst: 5
 
+what_if:
+  # 第 8 步：不按建议执行的后果（反事实推演）
+  # 相对“04 表建议补货量”的下单比例；0=不下单，1=按建议，2=两倍
+  scenarios: [0.0, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
+  # 与 scenarios 一一对应的中文标签（仅用于报告/图表，不参与计算）
+  scenario_labels: ["不下单", "半量", "0.75 倍", "按建议", "1.25 倍", "1.5 倍", "两倍"]
+  # 观察窗口（天）；必须与仿真窗口/预测表天数一致
+  horizon_days: 7
+  # 仅首日按情景量到货（相当于前一晚下的“下一次订货”），次日起恢复 base_policy 每日补货
+  override_days: 1
+  # 情景之后恢复的常规策略（A/B/C）
+  base_policy: "C"
+  # 基线比例（用于计算差值/成本差百分比）
+  baseline_ratio: 1.0
+  # 数据止于 2024-07-02：07-03 之后没有实际需求，前瞻窗口用同一 7 天实际需求复演，
+  # 避免凭空外推；报告中必须把这一点写成假设，不得当成真实预测。
+  demand_replay: true
+  # flat_threshold_pct：仅用于报告中的辅助标注，不构成结论依据；结论以逐档成本增幅为准。
+  flat_threshold_pct: 5.0
+  # steep_threshold_pct：仅用于报告中的辅助标注，不构成结论依据；结论以逐档成本增幅为准。
+  steep_threshold_pct: 15.0
+  # 输出文件（均为新增文件，不改已交付的 5 张表）
+  detail_path: "output/freshretail_what_if.csv"
+  summary_path: "output/freshretail_what_if_summary.csv"
+  curve_path: "output/freshretail_what_if_curve.png"
+  # 报告追加节标题（只追加，不改原文）
+  report_section_title: "14. 不按建议执行的后果"
+
+daily_brief:
+  # 第 11 步：看板“今日简报”。数字全部由 app/daily_brief.py 从 output 表算死，
+  # template = 纯模板（默认，断网可跑）；llm = 交 DeepSeek 润色，数字/店号-SKU 校验
+  # 不过就回退模板，没有例外。
+  mode: template
+  # LLM 调用超时（秒）；超时同样回退模板
+  timeout_seconds: 3
+
 outputs:
   # 补货快照：每序列一行（基准保质期）
   replenishment: "output/freshretail_inventory_replenishment.csv"
@@ -135,3 +171,9 @@ outputs:
   cap_sweep: "output/freshretail_inventory_cap_sweep.csv"
   # 方法与结论报告
   report: "output/freshretail_inventory_report.md"
+
+policy_alpha:
+  # 第 12 步：报童临界分位 α* 的自动推导开关（只加不改，不影响本轮已交付表）
+  auto: false          # true 时未来重跑可由 costs 自动算 α*；本轮先 false，交付表不受影响
+  grid: [0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95]
+  note: "α* 由报童临界分位公式推导，仅作策略 C 分位选择的参考起点；实测以 alpha_sweep 为准"

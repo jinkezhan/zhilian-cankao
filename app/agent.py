@@ -28,6 +28,28 @@ import pandas as pd
 import requests
 
 try:
+    from dialect_intent import (
+        NO_TOOL_INTENTS,
+        IntentError,
+        clarify_reply,
+        parse_intent,
+        resolve_text,
+        validate_intent,
+    )
+    from dialect_normalize import GlossaryError, dialect_names, normalize
+except ImportError:  # 从别的工作目录导入 agent 时，补一次 app/ 目录
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from dialect_intent import (
+        NO_TOOL_INTENTS,
+        IntentError,
+        clarify_reply,
+        parse_intent,
+        resolve_text,
+        validate_intent,
+    )
+    from dialect_normalize import GlossaryError, dialect_names, normalize
+
+try:
     from forecast_common import OUTPUT_DIR, load_config
 except Exception:  # pragma: no cover - 仅用于独立运行时兜底
     OUTPUT_DIR = Path(__file__).resolve().parents[1] / "output"
@@ -75,7 +97,31 @@ SYSTEM_PROMPT = """你是「智链参谋」供应链补货助手，服务对象�
 18. 快照周是 2017-08-21；预测跨度 4 周；提前期 4 周；服务水平 P90。
 19. 紧急度四档（按顺序判断）：可用库存 < 0.5×ROP → 紧急；0.5×ROP ≤ 可用库存 < ROP → 建议补货；ROP ≤ 可用库存 < 目标水位 → 计划补货；可用库存 ≥ 目标水位 → 正常（订货量必为 0）。漂移是独立标注，可与任一档并列。
 20. 回答中不要输出 JSON、工具名或调用参数；工具调用由系统单独打印。
+
+回答语气像熟悉店情的店长助理，先说结论再说数字，口语自然，但所有数字必须与工具返回完全一致，不得增删或约化。
 """
+
+
+# 方言与参数纪律：只在启用方言层（--dialect != none）时追加，
+# 保证 --dialect none 的提示词与第 5/8 步完全一致，旧测试不受影响。
+DIALECT_PROMPT_ADDENDUM = """
+【方言与参数纪律】
+21. 用户可能说西南官话（桂柳/川渝/云南/贵州/湖北）、粤语或湘语，按普通话理解即可，不要因为方言降低判断标准。
+22. 调用工具前必须确认参数齐全：查询具体商品必须有 store_id 与 product_id；补货建议必须有 store_id 与 product_id；反事实推演必须有比例或订货量。缺任何一个都必须先反问，禁止猜测或默认值。
+23. 用户说了一句陈述或感慨、没有明确诉求时，不要强行调用工具。
+24. 回复先用用户方言的口语说一句，再另起一行用普通话补口径（同一组数字只出现一次，两个版本必须一致）。
+25. 系统可能给出「已校验意图」的 JSON：调用工具时必须使用其中的 store_id / product_id / ratio / qty，不得改写或猜测。
+"""
+
+_INTENT_CACHE: dict[str, dict] = {}
+
+
+def build_system_prompt(dialect: str = "none", base: str | None = None) -> str:
+    """none 时原样返回；其余模式在提示词末尾追加方言与参数纪律。"""
+    base = SYSTEM_PROMPT if base is None else base
+    if dialect in (None, "", "none"):
+        return base
+    return base + DIALECT_PROMPT_ADDENDUM
 
 
 class AgentError(Exception):
@@ -98,9 +144,23 @@ def _key_looks_valid(key: str) -> bool:
     return not any(ch.isspace() for ch in key)
 
 
+def _streamlit_secret(name: str) -> str:
+    """读取 Streamlit Cloud 的 st.secrets；本地/命令行环境自动返回空串。"""
+    try:
+        import streamlit as st
+
+        value = st.secrets.get(name, "")
+        return str(value).strip() if value is not None else ""
+    except Exception:
+        return ""
+
+
 def load_api_key(env_path: Path = ENV_PATH) -> str:
-    """进程环境变量优先，其次读取 .env 的 DEEPSEEK_API_KEY。不打印密钥。"""
+    """密钥优先级：进程环境变量 > Streamlit Cloud secrets > 本地 .env。"""
     key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
+    if key:
+        return key if _key_looks_valid(key) else ""
+    key = _streamlit_secret("DEEPSEEK_API_KEY")
     if key:
         return key if _key_looks_valid(key) else ""
     if not env_path.exists():
@@ -670,6 +730,158 @@ def run_turn(
     return "本轮工具调用次数已达上限，请缩小问题范围后重试。", tool_logs
 
 
+def run_turn_dialect(
+    messages: list[dict],
+    store: DataStore,
+    api_key: str,
+    dialect: str = "auto",
+    enable_rollback: bool = True,
+    enable_validation: bool = True,
+    echo: bool = True,
+    show_raw: bool = False,
+) -> dict:
+    """带方言层的单轮对话。
+
+    流程（dialect != none）：
+        原文 -> 词表归一化 -> 回退检查 -> 意图 JSON -> 规则校验必填参数
+        -> 缺参数/无诉求：直接反问，不调工具
+        -> 参数齐全：把已校验参数作为提示交给原来的 run_turn
+
+    dialect == "none" 时完全走 run_turn 原路径（提示词、工具、行为都不变）。
+    """
+    if not messages or messages[-1].get("role") != "user":
+        raise ValueError("messages 最后一条必须是用户消息")
+
+    original = str(messages[-1].get("content") or "")
+    base_result: dict = {
+        "dialect": dialect,
+        "original": original,
+        "normalized": original,
+        "resolved_text": original,
+        "hits": [],
+        "skipped": [],
+        "rollback": {"rolled_back": False, "reason": "dialect=none"},
+        "intent": None,
+        "validation": None,
+        "clarified": False,
+        "answer": "",
+        "tool_logs": [],
+    }
+
+    if dialect in (None, "", "none"):
+        answer, logs = run_turn(
+            messages, store, api_key, echo=echo, show_raw=show_raw
+        )
+        base_result.update({"answer": answer, "tool_logs": logs})
+        return base_result
+
+    try:
+        norm_info = normalize(original, mode=dialect)
+    except GlossaryError as exc:
+        raise AgentError(str(exc), exit_code=2) from None
+
+    if enable_rollback:
+        try:
+            resolved = resolve_text(
+                original, norm_info["normalized"], api_key, _INTENT_CACHE
+            )
+        except IntentError as exc:
+            raise AgentError(str(exc)) from None
+    else:
+        resolved = {
+            "text": norm_info["normalized"],
+            "rolled_back": False,
+            "reason": "回退检查未启用",
+            "intent": None,
+        }
+
+    chosen_text = str(resolved.get("text") or original)
+    result = dict(base_result)
+    result.update(
+        {
+            "normalized": norm_info["normalized"],
+            "resolved_text": chosen_text,
+            "hits": norm_info["hits"],
+            "skipped": norm_info["skipped"],
+            "rollback": {
+                "rolled_back": bool(resolved.get("rolled_back", False)),
+                "reason": resolved.get("reason", ""),
+                "intent_original": resolved.get("intent_original"),
+                "intent_normalized": resolved.get("intent_normalized"),
+            },
+        }
+    )
+
+    intent = resolved.get("intent")
+    validation = None
+    if enable_validation:
+        if intent is None:
+            try:
+                intent = parse_intent(chosen_text, api_key, _INTENT_CACHE)
+            except IntentError as exc:
+                raise AgentError(str(exc)) from None
+        validation = validate_intent(intent)
+        result["intent"] = intent
+        result["validation"] = validation
+
+        blocked = intent.get("intent") in NO_TOOL_INTENTS or not validation["ok"]
+        if blocked:
+            dialect_name = (
+                None
+                if dialect == "auto"
+                else dialect_names().get(dialect, dialect)
+            )
+            answer = clarify_reply(
+                intent, validation.get("missing"), dialect_name=dialect_name
+            )
+            messages.append({"role": "assistant", "content": answer})
+            result.update({"answer": answer, "clarified": True})
+            return result
+    elif intent is not None:
+        result["intent"] = intent
+
+    # 调整提示词（只在方言模式下追加纪律）
+    if messages and messages[0].get("role") == "system":
+        messages[0]["content"] = build_system_prompt(dialect)
+
+    # 模型看到的是归一化后（或回退后）的文本
+    messages[-1]["content"] = chosen_text
+
+    hint_index = None
+    if enable_validation and intent is not None:
+        hint = {
+            "intent": intent.get("intent"),
+            "store_id": intent.get("store_id"),
+            "product_id": intent.get("product_id"),
+            "qty": intent.get("qty"),
+            "ratio": intent.get("ratio"),
+        }
+        hint_text = "【已校验意图】" + json.dumps(hint, ensure_ascii=False)
+        if dialect != "auto":
+            hint_text += (
+                "\n调用方指定方言："
+                + dialect_names().get(dialect, dialect)
+                + "（仅用于措辞，不要判断方言种类）"
+            )
+        hint_text += (
+            "\n调用工具时必须使用上述参数，不得猜测或改写。"
+            "\n【回复格式（硬性）】第一行必须是一句用「」括起来的方言口语；"
+            "方言句里的数字只能照抄工具返回的原值，禁止自行加总、取整或换算；"
+            "第二行起另起一段，用普通话给口径。不要把普通话语句写进「」。"
+        )
+        hint_index = len(messages) - 1
+        messages.insert(hint_index, {"role": "system", "content": hint_text})
+
+    answer, logs = run_turn(
+        messages, store, api_key, echo=echo, show_raw=show_raw
+    )
+    if hint_index is not None and hint_index < len(messages):
+        del messages[hint_index]
+
+    result.update({"answer": answer, "tool_logs": logs})
+    return result
+
+
 # ---------------------------------------------------------------------------
 # 数据源开关：只替换工具/提示词/DataStore，不重写 run_turn / 模型调用
 # ---------------------------------------------------------------------------
@@ -716,7 +928,38 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="数据源：dataco（默认，保底）或 freshretail（生鲜线）",
     )
+    parser.add_argument(
+        "--dialect",
+        default="auto",
+        help="方言层：auto（默认，全部词表匹配）/ none（关闭，行为与旧版一致）/ "
+        "各方言 key（如 xinanguanhua_guiliu、yue）",
+    )
     return parser.parse_args(argv)
+
+
+def _run_one_turn(
+    messages: list[dict],
+    store: DataStore,
+    api_key: str,
+    dialect: str,
+    show_raw: bool,
+) -> tuple[str, list[dict]]:
+    """CLI 单轮入口：none 走旧路径，其余走方言层。"""
+    if dialect in ("none",):
+        return run_turn(messages, store, api_key, echo=True, show_raw=show_raw)
+
+    result = run_turn_dialect(
+        messages, store, api_key, dialect=dialect, echo=True, show_raw=show_raw
+    )
+    if result["normalized"] != result["original"]:
+        print(f"[方言归一] {result['original']} -> {result['normalized']}")
+    for skipped in result["skipped"]:
+        print(f"[误伤排除] 跳过「{skipped['word']}」（保护词：{skipped['protected_by']}）")
+    if result["rollback"].get("rolled_back"):
+        print(f"[回退原文] {result['rollback']['reason']}")
+    if result["clarified"]:
+        print("[参数校验] 必填参数不全，未调用工具，已反问")
+    return result["answer"], result["tool_logs"]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -745,9 +988,25 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     store = DataStore(Path(args.data_dir) if args.data_dir else None)
+
+    dialect = str(args.dialect or "auto").strip()
+    try:
+        known = dialect_names()
+    except GlossaryError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    if dialect not in ("auto", "none") and dialect not in known:
+        print(
+            f"未知 --dialect：{dialect}（可选：auto / none / "
+            + " / ".join(sorted(known))
+            + "）",
+            file=sys.stderr,
+        )
+        return 2
+
     print(
         f"[配置] 数据源={dataset}，模型={MODEL_NAME}，密钥=已读取（已隐藏），"
-        f"数据目录={store.data_dir}"
+        f"数据目录={store.data_dir}，方言层={dialect}"
     )
 
     messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -756,8 +1015,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.once is not None:
             print(f"你> {args.once}")
             messages.append({"role": "user", "content": args.once})
-            answer, logs = run_turn(
-                messages, store, api_key, echo=True, show_raw=args.show_raw
+            answer, logs = _run_one_turn(
+                messages, store, api_key, dialect, args.show_raw
             )
             if logs:
                 print(f"[本轮工具调用] 共 {len(logs)} 次")
@@ -784,8 +1043,8 @@ def main(argv: list[str] | None = None) -> int:
                 continue
 
             messages.append({"role": "user", "content": question})
-            answer, logs = run_turn(
-                messages, store, api_key, echo=True, show_raw=args.show_raw
+            answer, logs = _run_one_turn(
+                messages, store, api_key, dialect, args.show_raw
             )
             if logs:
                 print(f"[本轮工具调用] 共 {len(logs)} 次")

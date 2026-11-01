@@ -4908,10 +4908,23 @@ def main_dataco() -> None:
 # ---------------------------------------------------------------------------
 # 主流程：生鲜前置仓（默认）
 # ---------------------------------------------------------------------------
+def _streamlit_secret(name: str) -> str:
+    """读取 Streamlit Cloud 的 st.secrets；本地没有 secrets 时返回空串。"""
+    try:
+        value = st.secrets.get(name, "")
+        return str(value).strip() if value is not None else ""
+    except Exception:
+        return ""
+
+
 def _load_login_credentials() -> tuple[str, str]:
-    """管理员账号与口令：环境变量优先，其次项目根目录 .env，缺省用演示口令。"""
-    user = os.environ.get("APP_LOGIN_USER", "").strip()
-    password = os.environ.get("APP_LOGIN_PASSWORD", "").strip()
+    """账号口令：环境变量 > Streamlit secrets > .env，缺省用演示口令。"""
+    user = os.environ.get("APP_LOGIN_USER", "").strip() or _streamlit_secret(
+        "APP_LOGIN_USER"
+    )
+    password = os.environ.get(
+        "APP_LOGIN_PASSWORD", ""
+    ).strip() or _streamlit_secret("APP_LOGIN_PASSWORD")
     env_path = BASE_DIR / ".env"
     if env_path.exists() and (not user or not password):
         try:
@@ -4988,7 +5001,9 @@ def _authenticate(username: str, password: str) -> tuple[str, str] | None:
 
 
 def _session_secret() -> str:
-    secret = os.environ.get("APP_SESSION_SECRET", "").strip()
+    secret = os.environ.get(
+        "APP_SESSION_SECRET", ""
+    ).strip() or _streamlit_secret("APP_SESSION_SECRET")
     if secret:
         return secret
     env_path = BASE_DIR / ".env"
