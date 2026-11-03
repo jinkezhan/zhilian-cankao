@@ -69,6 +69,37 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# ---------------------------------------------------------------------------
+# 公网部署：隐藏 Streamlit Cloud 的 Manage app / 开发者徽章
+# 只匹配 Streamlit 自带元素，不影响自定义顶栏、页脚和全局 AI 悬浮球。
+# set_page_config 必须是第一条 Streamlit 命令，所以这段紧跟在它后面。
+# ---------------------------------------------------------------------------
+_HIDE_STREAMLIT_CHROME = """
+<style>
+  #MainMenu, footer { visibility: hidden !important; }
+  [data-testid="stHeader"],
+  [data-testid="stToolbar"],
+  [data-testid="stDecoration"],
+  [data-testid="stStatusWidget"],
+  [data-testid="stAppDeployButton"],
+  [data-testid="stDeployButton"],
+  [data-testid="manage-app-button"],
+  .stDeployButton {
+    display: none !important;
+    visibility: hidden !important;
+  }
+  /* Streamlit Cloud 右下角可能出现的 viewer badge / 品牌标识 */
+  #viewerBadge,
+  [data-testid="viewerBadge"],
+  [class*="viewerBadge"],
+  [class*="ViewerBadge"] {
+    display: none !important;
+    visibility: hidden !important;
+  }
+</style>
+"""
+st.markdown(_HIDE_STREAMLIT_CHROME, unsafe_allow_html=True)
+
 FRESH_LABEL = "生鲜前置仓（默认）"
 DATACO_LABEL = "制造企业（保底）"
 
