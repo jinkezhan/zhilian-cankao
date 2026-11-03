@@ -3972,34 +3972,56 @@ def render_fresh_replenishment(
         else:
             st.caption("还没有保存的视图；保存后会写在本机 output/saved_views.json。")
 
-    excel_bytes, pdf_bytes = _cached_reports(
-        display, repl, snapshot, values, filter_note
-    )
-    report_left, report_right = st.columns(2)
-    with report_left:
-        st.download_button(
-            "导出 Excel 日报",
-            data=excel_bytes,
-            file_name=f"补货日报_{snapshot}.xlsx",
-            mime=(
-                "application/vnd.openxmlformats-officedocument."
-                "spreadsheetml.sheet"
-            ),
-            key="report_excel",
+    # 日报按需生成：首屏和普通筛选不再跑 Excel/PDF，避免白屏卡顿。
+    report_sig = (snapshot, filter_note, len(display), len(repl))
+    if st.session_state.get("fresh_report_sig") != report_sig:
+        st.session_state["fresh_report_sig"] = report_sig
+        st.session_state["fresh_report_ready"] = False
+
+    report_col, report_hint = st.columns([1.2, 3.0])
+    with report_col:
+        generate_report = st.button(
+            "生成 Excel / PDF 日报",
+            key="fresh_generate_reports",
             use_container_width=True,
+            help="按当前筛选生成带格式日报，首次约 1–3 秒",
         )
-    with report_right:
-        if pdf_bytes:
+    with report_hint:
+        st.caption("日报只包含当前筛选结果；生成后可直接下载 Excel/PDF。")
+    if generate_report:
+        st.session_state["fresh_report_ready"] = True
+
+    if st.session_state.get("fresh_report_ready"):
+        with st.spinner("正在生成日报..."):
+            excel_bytes, pdf_bytes = _cached_reports(
+                display, repl, snapshot, values, filter_note
+            )
+        report_left, report_right = st.columns(2)
+        with report_left:
             st.download_button(
-                "导出 PDF 日报",
-                data=pdf_bytes,
-                file_name=f"补货日报_{snapshot}.pdf",
-                mime="application/pdf",
-                key="report_pdf",
+                "导出 Excel 日报",
+                data=excel_bytes,
+                file_name=f"补货日报_{snapshot}.xlsx",
+                mime=(
+                    "application/vnd.openxmlformats-officedocument."
+                    "spreadsheetml.sheet"
+                ),
+                key="report_excel",
                 use_container_width=True,
             )
-        else:
-            st.caption("PDF 生成暂不可用")
+        with report_right:
+            if pdf_bytes:
+                st.download_button(
+                    "导出 PDF 日报",
+                    data=pdf_bytes,
+                    file_name=f"补货日报_{snapshot}.pdf",
+                    mime="application/pdf",
+                    key="report_pdf",
+                    use_container_width=True,
+                )
+            else:
+                st.caption("PDF 生成暂不可用")
+        st.caption("筛选条件变化后需要重新生成日报。")
 
     render_trace_section(repl, caps, config)
     render_order_panel(view, snapshot)
@@ -4875,10 +4897,12 @@ def render_chat(
             dialect_note = "方言归一化：" + "、".join(
                 f"{src}→{dst}" for src, dst in replacements
             )
+        # 首屏不加载 Agent 数据仓库；只有真正提问时才加载（约 5.4MB）。
+        loaded_store = store() if callable(store) else store
         _ask_agent(
             normalized,
             api_key,
-            store,
+            loaded_store,
             dataset,
             state_key,
             source_note,
@@ -4910,7 +4934,7 @@ def main_dataco() -> None:
         api_key = get_agent().load_api_key()
         render_chat(
             api_key,
-            get_dataco_store(),
+            get_dataco_store,
             dataset="dataco",
             state_key="dataco",
             quick_questions=QUICK_QUESTIONS,
@@ -4937,7 +4961,7 @@ def main_dataco() -> None:
     api_key = get_agent().load_api_key()
     render_chat(
         api_key,
-        get_dataco_store(),
+        get_dataco_store,
         dataset="dataco",
         state_key="dataco",
         quick_questions=QUICK_QUESTIONS,
@@ -5573,7 +5597,6 @@ def main_fresh() -> None:
     forecast = load_csv(FRESH_FORECAST)
     comparison = load_csv(FRESH_COMPARISON)
     cap_sweep = load_csv(FRESH_CAP_SWEEP)
-    summary = load_csv(FRESH_SUMMARY)
     metrics = load_csv(FRESH_METRICS)
     config = load_fresh_config()
     snapshot = fresh_snapshot_date(forecast, config)
@@ -5651,6 +5674,8 @@ def main_fresh() -> None:
         _scroll_to_deep_link_once()
         st.divider()
         st.markdown('<div id="section-forecast"></div>', unsafe_allow_html=True)
+        # 5.4MB 汇总表只在预测详情区需要，放到这里加载，避免拖慢首屏。
+        summary = load_csv(FRESH_SUMMARY)
         render_fresh_detail(repl, forecast, summary, config, caps, snapshot)
 
     st.caption("注：销量单位已作展示化处理，底层为归一化销量指数")
@@ -5659,7 +5684,7 @@ def main_fresh() -> None:
     api_key = get_agent().load_api_key()
     render_chat(
         api_key,
-        get_fresh_store(),
+        get_fresh_store,
         dataset="freshretail",
         state_key="fresh",
         quick_questions=FRESH_QUICK_QUESTIONS,
