@@ -171,6 +171,8 @@ MUTED = "#6b7f94"
 GRID = "#DCE7F3"
 AXIS = "#c3c2b7"
 
+# 注意：以下 CSS 是完整多行字符串，首尾三引号分别在下一行和 </style> 之后
+# （约第 1207 行）。第 1183 行位于字符串内部，切勿在这里补三引号。
 CSS = """
 <style>
 :root { color-scheme: light; }
