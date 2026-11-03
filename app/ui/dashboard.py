@@ -20,6 +20,7 @@ import hmac
 import html
 import io
 import json
+import linecache
 import math
 import os
 import re
@@ -1213,6 +1214,12 @@ st.markdown(CSS, unsafe_allow_html=True)
 # ---------------------------------------------------------------------------
 # 数据加载（只读、缓存）
 # ---------------------------------------------------------------------------
+# Streamlit Cloud 热更新时，linecache 可能仍缓存着截断的旧源码；
+# inspect.getsource() 会因此抛 EOF in multi-line string。先清空再装饰第一个
+# 缓存函数，强制它重新读取当前完整文件。
+linecache.clearcache()
+
+
 @st.cache_data(show_spinner=False, ttl=300)
 def load_csv(name: str) -> pd.DataFrame | None:
     path = OUTPUT_DIR / name
