@@ -42,7 +42,22 @@ OUTPUT_DIR = BASE_DIR / "output"
 CONFIG_PATH = BASE_DIR / "config" / "freshretail_inventory.yaml"
 USERS_CONFIG_PATH = BASE_DIR / "config" / "users.yaml"
 ASSET_DIR = Path(__file__).resolve().parent / "assets"
-ROLE_LABELS = {"admin": "管理员", "planner": "计划员", "viewer": "查看者"}
+ROLE_LABELS = {
+    "store_manager": "店长",
+    "staff": "店员",
+    "supervisor": "督导",
+    "hq": "总公司",
+    "admin": "系统管理员",
+    "guest": "游客",
+}
+ROLE_LEGACY = {"admin": "admin", "planner": "supervisor", "viewer": "staff"}
+ROLE_DESCRIPTIONS = {
+    "store_manager": "本店数据 · 可上传本店数据 · 补货单",
+    "staff": "本店数据只读 · 可问 AI",
+    "supervisor": "指定多店 / 全部门店 · 审批补货单",
+    "hq": "全部门店 · 历史经营数据 · 只读",
+    "admin": "全部权限 · 数据上传 · 账号管理",
+}
 SESSION_HOURS = 8
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
@@ -115,6 +130,12 @@ def _system_prompt(dataset: str) -> str:
         facts = st.session_state.get("imported_prompt_facts")
         if facts:
             prompt = prompt + "\n\n" + str(facts)
+        allowed = _allowed_stores()
+        if allowed is not None:
+            prompt = prompt + (
+                f"\n\n【当前账号门店范围】仅可查询 {_store_scope_label()} 的数据；"
+                "用户问其他门店时，说明当前账号没有该门店权限，不要猜测或编造。"
+            )
     return prompt
 
 
@@ -721,6 +742,8 @@ div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > 
   top: 68px;
   right: 28px;
   width: 300px;
+  max-height: calc(100vh - 90px);
+  overflow-y: auto;
   z-index: 1000003;
   padding: 18px 18px 16px;
   border-radius: 16px;
@@ -1541,25 +1564,92 @@ def _clear_fresh_store() -> None:
 get_fresh_store.clear = _clear_fresh_store  # type: ignore[attr-defined]
 
 
+def _apply_store_scope(store, allowed: set[int]) -> None:
+    """把 Agent 数据仓库裁到当前角色可见的门店。"""
+    allowed = {int(x) for x in allowed}
+    if not allowed:
+        return
+
+    def _in(key: tuple[int, int]) -> bool:
+        return int(key[0]) in allowed
+
+    store.repl_lookup = {
+        key: value for key, value in store.repl_lookup.items() if _in(key)
+    }
+    store.forecast_lookup = {
+        key: value for key, value in store.forecast_lookup.items() if _in(key)
+    }
+    store.what_if_lookup = {
+        key: value for key, value in store.what_if_lookup.items() if _in(key)
+    }
+    store.known_series = {key for key in store.known_series if _in(key)}
+    store.selected_series = {key for key in store.selected_series if _in(key)}
+    for attr in ("repl_raw", "forecast_raw", "what_if_raw", "summary_raw"):
+        frame = getattr(store, attr, None)
+        if frame is not None and "store_id" in frame.columns:
+            setattr(
+                store,
+                attr,
+                frame[
+                    pd.to_numeric(frame["store_id"], errors="coerce").isin(allowed)
+                ].copy(),
+            )
+    from freshretail_agent.tools_freshretail import sku_label
+
+    store.available_series = [
+        sku_label(store_id, product_id)
+        for store_id, product_id in sorted(store.selected_series)[:10]
+    ]
+
+
 def get_active_fresh_store():
     """导入模式用内存 CSV 构建的 store；演示模式用系统快照。"""
     imported_dir = st.session_state.get("imported_agent_dir")
-    if not imported_dir:
-        return get_fresh_store()
+    allowed = _allowed_stores()
+    if allowed is None:
+        if not imported_dir:
+            return get_fresh_store()
+        signature = (
+            st.session_state.get("imported_signature"),
+            st.session_state.get("imported_snapshot"),
+        )
+        cached = st.session_state.get("imported_store_cache")
+        if cached and cached.get("signature") == signature:
+            return cached["store"]
+        from freshretail_agent.tools_freshretail import FreshDataStore
+
+        store = FreshDataStore(data_dir=Path(imported_dir))
+        store.snapshot_date = str(
+            st.session_state.get("imported_snapshot") or store.snapshot_date
+        )
+        st.session_state["imported_store_cache"] = {
+            "signature": signature,
+            "store": store,
+        }
+        return store
+
     signature = (
+        imported_dir,
+        tuple(sorted(allowed)),
         st.session_state.get("imported_signature"),
         st.session_state.get("imported_snapshot"),
     )
-    cached = st.session_state.get("imported_store_cache")
+    cached = st.session_state.get("_scoped_store_cache")
     if cached and cached.get("signature") == signature:
         return cached["store"]
     from freshretail_agent.tools_freshretail import FreshDataStore
 
-    store = FreshDataStore(data_dir=Path(imported_dir))
-    store.snapshot_date = str(
-        st.session_state.get("imported_snapshot") or store.snapshot_date
+    store = (
+        FreshDataStore(data_dir=Path(imported_dir))
+        if imported_dir
+        else FreshDataStore()
     )
-    st.session_state["imported_store_cache"] = {
+    if imported_dir:
+        store.snapshot_date = str(
+            st.session_state.get("imported_snapshot") or store.snapshot_date
+        )
+    _apply_store_scope(store, allowed)
+    st.session_state["_scoped_store_cache"] = {
         "signature": signature,
         "store": store,
     }
@@ -2169,6 +2259,7 @@ def render_fresh_kpi(
     snapshot: str,
     metrics: pd.DataFrame | None = None,
     imported: bool = False,
+    metrics_hidden: bool = False,
 ) -> None:
     wmape = fresh_model_wmape(metrics)
     accuracy = (1.0 - wmape) * 100 if wmape is not None else None
@@ -2208,15 +2299,23 @@ def render_fresh_kpi(
             "value": f"{accuracy:.1f}" if accuracy is not None else "—",
             "unit": "%" if accuracy is not None else "",
             "sub": (
-                f"1 − WMAPE · WMAPE {wmape:.1%}"
-                if wmape is not None
-                else "预测精度指标暂缺"
+                "当前角色仅看门店数据，不展示全局模型指标"
+                if metrics_hidden and accuracy is None
+                else (
+                    f"1 − WMAPE · WMAPE {wmape:.1%}"
+                    if wmape is not None
+                    else "预测精度指标暂缺"
+                )
             ),
             "tone": "",
             "hint": (
-                f"1 − WMAPE；WMAPE {wmape:.2%}（lgbm_a / 全部）"
-                if wmape is not None
-                else "未找到预测精度指标"
+                "门店级账号不展示全局模型 WMAPE"
+                if metrics_hidden and accuracy is None
+                else (
+                    f"1 − WMAPE；WMAPE {wmape:.2%}（lgbm_a / 全部）"
+                    if wmape is not None
+                    else "未找到预测精度指标"
+                )
             ),
         },
     ]
@@ -2603,6 +2702,19 @@ def _apply_import(
     existing = st.session_state.get("imported_table")
     if mode == "merge" and existing is not None and not existing.empty:
         canonical = imported_data.merge_frames(existing, canonical)
+    dropped = 0
+    allowed = _allowed_stores()
+    if allowed is not None:
+        before = len(canonical)
+        canonical = canonical[
+            canonical["store_id"].astype(int).isin(allowed)
+        ].copy()
+        dropped = before - len(canonical)
+        if canonical.empty:
+            raise ValueError(
+                f"当前角色只能导入 {_store_scope_label()} 的数据，"
+                "文件中没有匹配行。"
+            )
     dataset = imported_data.build_dataset(canonical, config)
     directory = _import_temp_dir()
     imported_data.materialize_agent_files(dataset, directory)
@@ -2611,6 +2723,12 @@ def _apply_import(
     files = list(meta.get("files") or [])
     if filename not in files:
         files.append(filename)
+    warnings = list(dataset.warnings)
+    if dropped:
+        warnings.append(
+            f"已忽略 {dropped} 行其它门店数据（当前角色仅可导入 "
+            f"{_store_scope_label()}）。"
+        )
     st.session_state["imported_table"] = canonical.copy()
     st.session_state["imported_meta"] = {
         "filename": filename,
@@ -2618,7 +2736,7 @@ def _apply_import(
         "mode": mode,
         "imported_at": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"),
         "rows": len(canonical),
-        "warnings": list(dataset.warnings),
+        "warnings": warnings,
     }
     st.session_state["imported_name_map"] = dataset.names
     st.session_state["imported_signature"] = dataset.signature
@@ -2633,7 +2751,7 @@ def _apply_import(
     )
 
 
-def _clear_import() -> None:
+def _reset_import_state() -> None:
     for key in (
         "imported_table",
         "imported_meta",
@@ -2655,6 +2773,31 @@ def _clear_import() -> None:
     st.session_state["import_file_nonce"] = (
         int(st.session_state.get("import_file_nonce", 0) or 0) + 1
     )
+
+
+def _reset_role_caches() -> None:
+    """切换账号/角色时清掉导入数据、门店缓存与筛选器，避免跨角色串数据。"""
+    _reset_import_state()
+    for key in (
+        "_fresh_store",
+        "_dataco_store",
+        "_reports_cache",
+        "_scoped_store_cache",
+        "order_cart",
+        "fresh_store_filter",
+        "fresh_urgency_filter_v2",
+        "fresh_shelf_filter_v2",
+        "fresh_expiring_only",
+        "fresh_detail_series",
+        "fresh_sku_search",
+        "order_add_sku",
+        "order_bulk_pick",
+    ):
+        st.session_state.pop(key, None)
+
+
+def _clear_import() -> None:
+    _reset_import_state()
     st.rerun()
 
 
@@ -2665,10 +2808,13 @@ def _render_data_import() -> None:
     default_lead = float(rep_cfg.get("lead_time_days", 1))
     default_shelf = float(shelf_cfg.get("base_days", 5))
     imported = st.session_state.get("imported_table")
+    can_upload = _can_upload_data()
+    if not can_upload and imported is None:
+        return
 
     with st.expander(
         "📁 导入自有数据（完整接管 KPI / 表格 / 导出 / Agent）",
-        expanded=imported is None,
+        expanded=can_upload and imported is None,
     ):
         st.caption(
             "必填：SKU（如 145-802）或 店号+商品号、库存、日均销量；"
@@ -2680,12 +2826,18 @@ def _render_data_import() -> None:
             "导入后会按系统同一套库存口径重算 ROP_P90、目标水位、效期上限、"
             "建议订货量和四档紧急度，并切换 KPI、补货清单、导出与补货 Agent。"
         )
-        nonce = int(st.session_state.get("import_file_nonce", 0) or 0)
-        uploaded = st.file_uploader(
-            "选择文件",
-            type=["csv", "xlsx"],
-            key=f"dashboard_import_file_{nonce}",
-        )
+        uploaded = None
+        if can_upload:
+            nonce = int(st.session_state.get("import_file_nonce", 0) or 0)
+            uploaded = st.file_uploader(
+                "选择文件",
+                type=["csv", "xlsx"],
+                key=f"dashboard_import_file_{nonce}",
+            )
+        else:
+            st.caption(
+                "当前角色无上传权限；仅店长 / 系统管理员可上传自有数据。"
+            )
         if uploaded is not None:
             try:
                 raw_df = imported_data.read_uploaded_table(uploaded)
@@ -2735,6 +2887,18 @@ def _render_data_import() -> None:
                             )
                             for issue in issues:
                                 st.caption("· " + issue)
+                            allowed_import = _allowed_stores()
+                            if allowed_import is not None:
+                                outside = canonical[
+                                    ~canonical["store_id"].astype(int).isin(
+                                        allowed_import
+                                    )
+                                ]
+                                if not outside.empty:
+                                    st.warning(
+                                        f"文件中有 {len(outside)} 行不属于 "
+                                        f"{_store_scope_label()}，导入时会被忽略。"
+                                    )
                             st.dataframe(
                                 canonical.head(5),
                                 use_container_width=True,
@@ -2807,6 +2971,7 @@ def _trace_whatif_table(
     detail: pd.DataFrame | None = None,
     summary: pd.DataFrame | None = None,
     imported: bool = False,
+    allow_global_fallback: bool = True,
 ) -> None:
     """② 不照做会怎样：优先看这条序列的明细，缺失时退回全局汇总。"""
     if detail is None:
@@ -2828,6 +2993,12 @@ def _trace_whatif_table(
         ]
 
     if sub is None or sub.empty:
+        if not allow_global_fallback:
+            st.info(
+                "这条序列没有 what-if 明细；当前角色只能查看本店明细，"
+                "不展示全局汇总。"
+            )
+            return
         st.info("这条序列没有 what-if 明细，只能看全局口径。")
         if summary is None or summary.empty:
             return
@@ -3188,6 +3359,7 @@ def render_trace_section(
             detail=whatif_detail if imported else None,
             summary=whatif_summary if imported else None,
             imported=imported,
+            allow_global_fallback=_can_view_all_stores(),
         )
 
     if not imported:
@@ -3339,7 +3511,7 @@ def render_order_panel(view: pd.DataFrame, snapshot: str) -> None:
         return
 
     can_write = _can_write_decisions()
-    can_approve = _current_role() == "admin"
+    can_approve = _can_approve_decisions()
     operator = str(st.session_state.get("auth_account", "店长") or "店长")
     ratio_labels = {
         0.5: "半量（0.5 倍）",
@@ -3359,7 +3531,10 @@ def render_order_panel(view: pd.DataFrame, snapshot: str) -> None:
         f"操作人：{operator} · 当前角色：{_role_label(_current_role())}"
     )
     if not can_write:
-        st.caption("查看者只能查看批次与导出采购单；加入/确认需要计划员或管理员。")
+        st.caption(
+            "当前角色只能查看批次与导出采购单；"
+            "加入/确认需要店长、督导或系统管理员。"
+        )
 
     rows_by_key = {
         (int(row.store_id), int(row.product_id)): row
@@ -4062,11 +4237,16 @@ def render_fresh_replenishment(
     st.session_state.setdefault("fresh_store_filter", shared_store)
     if st.session_state.get("fresh_store_filter") not in [0, *store_options]:
         st.session_state["fresh_store_filter"] = 0
+    allowed_ui = _allowed_stores()
+    if allowed_ui is not None and len(allowed_ui) == 1:
+        only_store = next(iter(allowed_ui))
+        if only_store in store_options:
+            st.session_state["fresh_store_filter"] = only_store
     store_sel = f_store.selectbox(
         "门店",
         options=[0, *store_options],
         format_func=lambda s: "全部门店" if s == 0 else f"{s} 号店",
-        help="仅筛选下方补货清单、溯源与留痕；顶部 KPI 仍为全局总览。",
+        help="筛选下方补货清单、溯源与留痕；顶部 KPI 与表格均使用当前账号可见的门店范围。",
         key="fresh_store_filter",
     )
     urgency_options = list(URGENCY_RANK.keys())
@@ -4295,11 +4475,16 @@ def render_fresh_replenishment(
         st.divider()
         username = str(st.session_state.get("auth_account", "") or "")
         can_save = _can_save_views()
-        can_delete = can_save  # 个人视图：计划员/管理员可管理自己的视图
+        can_delete = can_save  # 个人视图：有保存权限的角色可管理自己的视图
         if not st.session_state.get("auth_logged_in"):
-            st.caption("保存 / 删除视图需要登录（计划员或管理员）；载入仅限当前账号的个人视图。")
+            st.caption(
+                "保存 / 删除视图需要登录（店长、督导、总公司或管理员）；"
+                "载入仅限当前账号的个人视图。"
+            )
         elif not can_save:
-            st.caption("当前角色为查看者：保存 / 删除需要计划员或管理员权限。")
+            st.caption(
+                "当前角色为只读：保存 / 删除需要店长、督导、总公司或管理员权限。"
+            )
         if username:
             st.caption(f"当前账号：{username} · 仅显示你的个人视图")
         with st.form("save_view_form", clear_on_submit=True):
@@ -5464,14 +5649,42 @@ def _load_users() -> dict[str, dict]:
                 name = str(item.get("username", "")).strip()
                 if not name:
                     continue
+                role = str(item.get("role", "staff")).strip() or "staff"
+                role = ROLE_LEGACY.get(role, role)
+                store_id = item.get("store_id")
+                stores = item.get("stores")
+                try:
+                    store_value = (
+                        int(store_id) if store_id not in (None, "") else None
+                    )
+                except (TypeError, ValueError):
+                    store_value = None
+                try:
+                    store_list = (
+                        [int(x) for x in stores]
+                        if isinstance(stores, list)
+                        else None
+                    )
+                except (TypeError, ValueError):
+                    store_list = None
                 users[name] = {
-                    "role": str(item.get("role", "viewer")).strip() or "viewer",
+                    "role": role,
                     "password_hash": str(item.get("password_hash", "")).strip(),
+                    "store_id": store_value,
+                    "stores": store_list,
                 }
         if users:
             return users
     user, password = _load_login_credentials()
-    return {user: {"role": "admin", "password_hash": "", "password": password}}
+    return {
+        user: {
+            "role": "admin",
+            "password_hash": "",
+            "password": password,
+            "store_id": None,
+            "stores": None,
+        }
+    }
 
 
 def _verify_password(record: dict, password: str) -> bool:
@@ -5595,27 +5808,98 @@ def _restore_session_from_token() -> None:
     record = _load_users().get(username, {})
     st.session_state["auth_logged_in"] = True
     st.session_state["auth_account"] = username
-    st.session_state["auth_role"] = str(record.get("role", "viewer"))
+    st.session_state["auth_role"] = str(record.get("role", "guest"))
+    st.session_state["auth_record"] = record
 
 
 def _current_role() -> str:
-    return str(st.session_state.get("auth_role", "viewer") or "viewer")
+    return str(st.session_state.get("auth_role", "guest") or "guest")
+
+
+def _current_record() -> dict:
+    return st.session_state.get("auth_record") or {}
 
 
 def _role_label(role: str) -> str:
     return ROLE_LABELS.get(role, role)
 
 
+def _role_description(role: str) -> str:
+    return ROLE_DESCRIPTIONS.get(role, "")
+
+
+def _can_upload_data() -> bool:
+    return _current_role() in ("store_manager", "admin")
+
+
 def _can_write_decisions() -> bool:
-    return _current_role() in ("admin", "planner")
+    return _current_role() in ("store_manager", "supervisor", "admin")
+
+
+def _can_approve_decisions() -> bool:
+    return _current_role() in ("supervisor", "admin")
 
 
 def _can_save_views() -> bool:
-    return _current_role() in ("admin", "planner")
+    return _current_role() in ("store_manager", "supervisor", "hq", "admin")
 
 
 def _can_delete_views() -> bool:
-    return _current_role() == "admin"
+    return _current_role() in ("store_manager", "supervisor", "hq", "admin")
+
+
+def _can_view_all_stores() -> bool:
+    # 督导看的是“指定多店”，不应看到包含其它门店的全局汇总。
+    return _current_role() in ("hq", "admin", "guest")
+
+
+def _can_view_history() -> bool:
+    return _current_role() in ("hq", "admin")
+
+
+def _allowed_stores() -> set[int] | None:
+    """None = 全部门店；集合 = 仅这些门店。游客按全部门店只读展示。"""
+    role = _current_role()
+    if role in ("guest", "hq", "admin"):
+        return None
+    record = _current_record()
+    stores = record.get("stores")
+    if isinstance(stores, list) and stores:
+        return {int(x) for x in stores}
+    store_id = record.get("store_id")
+    if store_id not in (None, ""):
+        return {int(store_id)}
+    if role == "supervisor":
+        return None
+    return None
+
+
+def _store_scope_label() -> str:
+    allowed = _allowed_stores()
+    if allowed is None:
+        return "全部门店"
+    if len(allowed) == 1:
+        return f"{next(iter(allowed))} 号店"
+    return "、".join(f"{store} 号店" for store in sorted(allowed))
+
+
+def _record_scope_label(record: dict) -> str:
+    stores = record.get("stores")
+    if isinstance(stores, list) and stores:
+        return "、".join(f"{int(x)} 号店" for x in stores)
+    store_id = record.get("store_id")
+    if store_id not in (None, ""):
+        return f"{int(store_id)} 号店"
+    return "全部门店"
+
+
+def _account_label(name: str, users: dict) -> str:
+    record = users.get(name, {})
+    role = _role_label(str(record.get("role", "guest")))
+    scope = _record_scope_label(record)
+    if role == name:
+        return f"{name}（{scope}）"
+    return f"{role} · {name}（{scope}）"
 
 
 def _render_auth_controls() -> None:
@@ -5630,7 +5914,7 @@ def _render_auth_controls() -> None:
 
     with st.container():
         clicked = st.button(
-            "店" if logged_in else "👤",
+            (_role_label(_current_role())[:1] if logged_in else "👤"),
             key="nav_auth_button",
             help="登录 / 账户",
         )
@@ -5649,6 +5933,7 @@ def _render_auth_controls() -> None:
             account = str(st.session_state.get("auth_account", "店长"))
             role = _current_role()
             role_label = _role_label(role)
+            scope_label = _store_scope_label()
             st.markdown(
                 '<div class="auth-panel-title">账户</div>'
                 '<div class="auth-user-row">'
@@ -5658,6 +5943,7 @@ def _render_auth_controls() -> None:
                 f"{html.escape(account)}</div>"
                 f'<div class="auth-user-meta">账号：{html.escape(account)}'
                 f" · 角色：{html.escape(role_label)}</div>"
+                f'<div class="auth-user-meta">数据范围：{html.escape(scope_label)}</div>'
                 "</div></div>"
                 '<div class="auth-panel-note">已通过账号口令验证</div>',
                 unsafe_allow_html=True,
@@ -5667,42 +5953,69 @@ def _render_auth_controls() -> None:
                     "auth_logged_in",
                     "auth_account",
                     "auth_role",
+                    "auth_record",
                     "auth_panel_open",
                     "auth_username",
                     "auth_password",
                     "order_cart",
                 ):
                     st.session_state.pop(key, None)
+                _reset_role_caches()
                 _clear_auth_token()
                 st.rerun()
         else:
+            users = _load_users()
+            options = list(users) + ["其他账号"]
+            selected_account = st.selectbox(
+                "登录身份",
+                options=options,
+                format_func=lambda name: (
+                    "其他账号"
+                    if name == "其他账号"
+                    else _account_label(name, users)
+                ),
+                key="auth_account_select",
+            )
+            selected_record = users.get(selected_account, {})
+            if selected_account != "其他账号" and selected_record:
+                selected_role = selected_record.get("role", "guest")
+                description = _role_description(selected_role)
+                if description:
+                    st.caption(
+                        f"{_role_label(selected_role)}：{description}"
+                    )
             with st.form("nav_login_form", clear_on_submit=False):
-                st.markdown(
-                    '<div class="auth-panel-title">登录 · 智链参谋</div>',
-                    unsafe_allow_html=True,
-                )
-                st.caption("请输入账号与口令，角色由账号决定。")
-                username = st.text_input(
-                    "账号", key="auth_username", placeholder="例如：店长"
-                )
+                if selected_account == "其他账号":
+                    username = st.text_input(
+                        "账号", key="auth_username", placeholder="请输入账号"
+                    )
+                else:
+                    username = selected_account
                 password = st.text_input(
-                    "口令", key="auth_password", type="password", placeholder="请输入口令"
+                    "口令",
+                    key="auth_password",
+                    type="password",
+                    placeholder="请输入口令",
                 )
                 submitted = st.form_submit_button("登录", use_container_width=True)
                 if submitted:
                     auth = _authenticate(username.strip(), password)
                     if auth is not None:
                         user_name, role = auth
+                        record = users.get(user_name, {})
+                        _reset_role_caches()
                         st.session_state.auth_logged_in = True
                         st.session_state.auth_account = user_name
                         st.session_state.auth_role = role
+                        st.session_state.auth_record = record
                         st.session_state.auth_panel_open = False
                         st.session_state["auth_token_pending"] = _issue_auth_token(
                             user_name
                         )
                         st.rerun()
                     else:
-                        st.error("账号或口令不正确")
+                        st.error("账号或口令不正确，请确认身份与口令是否匹配")
+            st.caption("演示口令统一为 zhilian2026（仅演示环境）。")
             if st.button("取消", key="auth_cancel", use_container_width=True):
                 st.session_state.auth_panel_open = False
                 st.rerun()
@@ -5797,6 +6110,9 @@ def render_top_navbar(snapshot: str) -> None:
         except ValueError:
             store_value = 0
     store_text = "全部门店" if store_value == 0 else f"{store_value} 号店"
+    allowed_top = _allowed_stores()
+    if allowed_top is not None and len(allowed_top) > 1 and store_value == 0:
+        store_text = f"{_store_scope_label()}（{len(allowed_top)} 家）"
     if st.session_state.get("auth_logged_in"):
         account = str(st.session_state.get("auth_account", "店长") or "店长")
         auth_label = (
@@ -5925,6 +6241,7 @@ def render_data_status(
         warn_class = ""
         stamp_label = "导入时间"
     else:
+        scoped = _allowed_stores() is not None
         paths = [OUTPUT_DIR / FRESH_REPL, OUTPUT_DIR / FRESH_FORECAST]
         stamps = [path.stat().st_mtime for path in paths if path.exists()]
         updated = (
@@ -5932,27 +6249,35 @@ def render_data_status(
             if stamps
             else "未知"
         )
-        expected = int(
-            ((config or {}).get("validation", {}) or {}).get(
-                "expected_series", len(repl)
-            )
-        )
-        series_ok = len(repl) == expected
-        forecast_ok = True
-        if (
-            forecast is not None
-            and not forecast.empty
-            and {"store_id", "product_id"} <= set(forecast.columns)
-        ):
-            forecast_ok = (
-                forecast[["store_id", "product_id"]].drop_duplicates().shape[0] == expected
-            )
-        if series_ok and forecast_ok:
-            detail = f"{len(repl):,} 条序列校验通过"
-        elif not series_ok:
-            detail = f"序列数异常（{len(repl):,} / 期望 {expected:,}）"
+        if scoped:
+            series_ok = True
+            forecast_ok = True
+            detail = f"{len(repl):,} 条序列（当前账号门店范围）"
         else:
-            detail = "预测表序列数与补货快照不一致"
+            expected = int(
+                ((config or {}).get("validation", {}) or {}).get(
+                    "expected_series", len(repl)
+                )
+            )
+            series_ok = len(repl) == expected
+            forecast_ok = True
+            if (
+                forecast is not None
+                and not forecast.empty
+                and {"store_id", "product_id"} <= set(forecast.columns)
+            ):
+                forecast_ok = (
+                    forecast[["store_id", "product_id"]]
+                    .drop_duplicates()
+                    .shape[0]
+                    == expected
+                )
+            if series_ok and forecast_ok:
+                detail = f"{len(repl):,} 条序列校验通过"
+            elif not series_ok:
+                detail = f"序列数异常（{len(repl):,} / 期望 {expected:,}）"
+            else:
+                detail = "预测表序列数与补货快照不一致"
         warn_class = "" if series_ok and forecast_ok else " warn"
         stamp_label = "快照生成"
 
@@ -5970,6 +6295,114 @@ def render_data_status(
         f" · {html.escape(detail)}</span>"
         "</span></div>",
         unsafe_allow_html=True,
+    )
+
+
+def render_history_section(summary: pd.DataFrame | None, snapshot: str) -> None:
+    """总公司 / 管理员：按门店汇总历史经营数据。"""
+    if not _can_view_history():
+        return
+    st.divider()
+    st.markdown("### 历史经营数据")
+    st.caption(
+        "来源：freshretail_sku_summary_all.csv（官方脱敏口径，selected=1 分析范围）；"
+        f"快照 {snapshot}。"
+    )
+    if summary is None or summary.empty:
+        st.info("当前没有历史汇总数据；导入数据模式不含历史序列。")
+        return
+    frame = summary.copy()
+    required = {
+        "store_id",
+        "product_id",
+        "total_sale",
+        "daily_mean",
+        "cv",
+        "avg_stockout_rate",
+        "coverage_days",
+    }
+    missing = required - set(frame.columns)
+    if missing:
+        st.info("历史汇总缺少字段：" + "、".join(sorted(missing)))
+        return
+    if "selected" in frame.columns:
+        frame = frame[pd.to_numeric(frame["selected"], errors="coerce") == 1]
+    allowed = _allowed_stores()
+    if allowed is not None and "store_id" in frame.columns:
+        frame = frame[
+            pd.to_numeric(frame["store_id"], errors="coerce").isin(allowed)
+        ]
+    if frame.empty:
+        st.info("当前账号可见的门店没有历史汇总记录。")
+        return
+
+    store_table = (
+        frame.groupby("store_id", as_index=False)
+        .agg(
+            sku_count=("product_id", "nunique"),
+            total_sale=("total_sale", "sum"),
+            daily_mean=("daily_mean", "sum"),
+            avg_stockout_rate=("avg_stockout_rate", "mean"),
+            coverage_days=("coverage_days", "max"),
+        )
+        .sort_values("total_sale", ascending=False)
+    )
+    store_display = pd.DataFrame(
+        {
+            "门店": [f"{int(s)} 号店" for s in store_table["store_id"]],
+            "SKU 数": store_table["sku_count"].astype(int),
+            "累计销量": store_table["total_sale"].astype(float).round(2),
+            "日均销量合计": store_table["daily_mean"].astype(float).round(2),
+            "平均缺货率": [
+                f"{float(x):.2%}" for x in store_table["avg_stockout_rate"]
+            ],
+            "覆盖天数": store_table["coverage_days"].astype(int),
+        }
+    )
+    st.markdown("**门店汇总**")
+    st.dataframe(store_display, hide_index=True, use_container_width=True)
+    st.download_button(
+        "导出门店历史汇总 CSV",
+        data=store_display.to_csv(index=False).encode("utf-8-sig"),
+        file_name=f"门店历史汇总_{snapshot}.csv",
+        mime="text/csv",
+        key="history_store_download",
+        use_container_width=True,
+    )
+
+    top = frame.nlargest(20, "total_sale").copy()
+    top_display = pd.DataFrame(
+        {
+            "商品": [
+                _display_sku(s, p)
+                for s, p in zip(top["store_id"], top["product_id"])
+            ],
+            "累计销量": top["total_sale"].astype(float).round(2),
+            "日均销量": top["daily_mean"].astype(float).round(2),
+            "变异系数": top["cv"].astype(float).round(3),
+            "平均缺货率": [
+                f"{float(x):.2%}" for x in top["avg_stockout_rate"]
+            ],
+            "覆盖天数": top["coverage_days"].astype(int),
+        }
+    )
+    st.markdown("**销量 Top 20 SKU**")
+    st.dataframe(top_display, hide_index=True, use_container_width=True)
+    st.download_button(
+        "导出 Top 20 历史 CSV",
+        data=top_display.to_csv(index=False).encode("utf-8-sig"),
+        file_name=f"历史Top20_{snapshot}.csv",
+        mime="text/csv",
+        key="history_top_download",
+        use_container_width=True,
+    )
+    st.download_button(
+        "导出历史明细 CSV（selected=1）",
+        data=frame.to_csv(index=False).encode("utf-8-sig"),
+        file_name=f"历史明细_{snapshot}.csv",
+        mime="text/csv",
+        key="history_detail_download",
+        use_container_width=True,
     )
 
 
@@ -6041,12 +6474,29 @@ def _inject_nav_scrollspy() -> None:
 
 def main_fresh() -> None:
     config = load_fresh_config()
+    allowed_stores = _allowed_stores()
     imported_raw = st.session_state.get("imported_table")
     imported_dataset = None
     imported_meta = None
     whatif_detail = None
     whatif_summary = None
     summary = None
+    if (
+        imported_raw is not None
+        and allowed_stores is not None
+        and "store_id" in imported_raw.columns
+    ):
+        imported_raw = imported_raw[
+            pd.to_numeric(imported_raw["store_id"], errors="coerce").isin(
+                allowed_stores
+            )
+        ].copy()
+        if imported_raw.empty:
+            st.warning(
+                f"当前角色（{_store_scope_label()}）在导入数据中没有记录，"
+                "已回退到系统演示数据。"
+            )
+            imported_raw = None
     if imported_raw is not None and st.session_state.get("use_imported_data"):
         try:
             imported_dataset = imported_data.build_dataset(
@@ -6097,6 +6547,23 @@ def main_fresh() -> None:
         cap_sweep = load_csv(FRESH_CAP_SWEEP)
         metrics = load_csv(FRESH_METRICS)
         snapshot = fresh_snapshot_date(forecast, config)
+        if allowed_stores is not None:
+            if repl is not None and not repl.empty:
+                repl = repl[
+                    pd.to_numeric(repl["store_id"], errors="coerce").isin(
+                        allowed_stores
+                    )
+                ].copy()
+            if forecast is not None and not forecast.empty:
+                forecast = forecast[
+                    pd.to_numeric(forecast["store_id"], errors="coerce").isin(
+                        allowed_stores
+                    )
+                ].copy()
+            # 全局策略对比/扫描/模型指标只给总公司与管理员看
+            comparison = None
+            cap_sweep = None
+            metrics = None
         if repl is not None and not repl.empty:
             values = fresh_kpi_values(repl, comparison)
             suggest_total = int(
@@ -6119,9 +6586,20 @@ def main_fresh() -> None:
     render_notification_center(repl, config, snapshot)
     # 今日简报：页顶晨会播报，数字来自本次已加载的补货表。
     render_daily_brief(repl, snapshot)
-    if imported_meta is None:
+    if st.session_state.get("auth_logged_in"):
         st.caption(
-            "当前为演示数据；页面下方「导入自有数据」可完整接管 "
+            f"当前身份：{_role_label(_current_role())} · "
+            f"{st.session_state.get('auth_account', '')} · "
+            f"数据范围：{_store_scope_label()}"
+        )
+    else:
+        st.caption(
+            "当前为游客浏览（只读，全部门店演示数据）；"
+            "点右上角 👤 选择店长 / 店员 / 督导 / 总公司身份登录。"
+        )
+    if imported_meta is None and _can_upload_data():
+        st.caption(
+            "页面下方「导入自有数据」可完整接管 "
             "KPI / 补货清单 / 导出 / 补货 Agent。"
         )
     components.html(
@@ -6136,16 +6614,28 @@ def main_fresh() -> None:
     )
 
     if repl is None or repl.empty:
-        st.error(
-            "生鲜补货快照缺失，请先运行 "
-            "app/freshretail_inventory.py 生成 freshretail_inventory_replenishment.csv。"
-        )
+        if allowed_stores is not None:
+            st.error(
+                f"当前账号（{_store_scope_label()}）没有可查看的补货数据。"
+                "请确认账号绑定的门店是否正确，或联系管理员。"
+            )
+        else:
+            st.error(
+                "生鲜补货快照缺失，请先运行 "
+                "app/freshretail_inventory.py 生成 freshretail_inventory_replenishment.csv。"
+            )
     else:
         if not imported_meta:
             caps = compute_expiry_caps(repl, forecast, config)
         log_fresh_kpi(values, snapshot)
         render_fresh_kpi(
-            values, snapshot, metrics, imported=imported_meta is not None
+            values,
+            snapshot,
+            metrics,
+            imported=imported_meta is not None,
+            metrics_hidden=(
+                allowed_stores is not None and imported_meta is None
+            ),
         )
         status_col, refresh_col, _data_spacer = st.columns([6.0, 0.5, 0.5])
         with status_col:
@@ -6201,6 +6691,7 @@ def main_fresh() -> None:
         if not imported_meta:
             summary = load_csv(FRESH_SUMMARY)
         render_fresh_detail(repl, forecast, summary, config, caps, snapshot)
+        render_history_section(summary, snapshot)
 
     st.caption("注：销量单位已作展示化处理，底层为归一化销量指数")
     st.divider()

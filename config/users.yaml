@@ -2,14 +2,31 @@
 # 口令只保存 PBKDF2-HMAC-SHA256 哈希，不存明文。
 # 生成新哈希：
 #   python app/hash_password.py "新口令"
-# 角色：viewer = 查看者；planner = 计划员；admin = 管理员
+#
+# 角色：
+#   store_manager 店长：本店数据 + 上传本店数据 + 补货单
+#   staff         店员：本店数据只读 + 问 AI
+#   supervisor    督导：指定多店 / 全部门店 + 审批
+#   hq            总公司：全部门店 + 历史数据
+#   admin         系统管理员：全部权限
+#
+# 演示账号口令统一为 zhilian2026（仅演示环境使用）。
 users:
   - username: 店长
+    role: store_manager
+    store_id: 145
+    password_hash: pbkdf2_sha256$260000$8282e2fbc5a24d85a845f72d0148de10$34c3fa7d462dbaef109eb9d0388aafda3cb488f678e269ee39e7e87055c7a3a3
+  - username: 店员
+    role: staff
+    store_id: 145
+    password_hash: pbkdf2_sha256$260000$a6b87f2a4778c9329a3fd1d9abeb4aef$90f31b9c82b25c4a356260753fbf2075e07937c51f02174ef907eaaa1ff90d2c
+  - username: 督导
+    role: supervisor
+    stores: [3, 18, 145]
+    password_hash: pbkdf2_sha256$260000$3d0b624486438e1d1620105e473c1ea5$a9003ac5322a35c133cbb1fa026e24569bceb860efd96ebc63bd89cf0384ff19
+  - username: 总公司
+    role: hq
+    password_hash: pbkdf2_sha256$260000$25c17a0c07cef53f406e2e2d236e7d68$47f3c8aee0e4604afc6ee59e039feaf7819d290b6670a9c8562ed605fe4ec0cd
+  - username: 管理员
     role: admin
-    password_hash: pbkdf2_sha256$260000$5927b5c44cfb7892522f63473e1abbc6$9801bed1c5de9e7497bd6a64f34225862cc9c2f367d2c2a113d0810525a20731
-  - username: 计划员
-    role: planner
-    password_hash: pbkdf2_sha256$260000$bcbaf7f991da1bbf0f5a7a18f1b7b4a0$4a957aa74b604b6e620233363d5f37c8c4d83e3e8140a4fde84c8939980f5524
-  - username: 查看者
-    role: viewer
-    password_hash: pbkdf2_sha256$260000$e34f006574271eb0110539fa1aad3324$b53cd71bfe89b9cd488d516f52934515d808157e5bc448f283b59a985b250882
+    password_hash: pbkdf2_sha256$260000$8282e2fbc5a24d85a845f72d0148de10$34c3fa7d462dbaef109eb9d0388aafda3cb488f678e269ee39e7e87055c7a3a3
