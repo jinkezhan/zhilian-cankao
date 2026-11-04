@@ -1397,32 +1397,75 @@ st.markdown(CSS, unsafe_allow_html=True)
 # ---------------------------------------------------------------------------
 # 数据加载（只读、缓存）
 # ---------------------------------------------------------------------------
-# Streamlit Cloud 热更新时，linecache 可能仍缓存着截断的旧源码；
-# inspect.getsource() 会因此抛 EOF in multi-line string。先清空再装饰第一个
-# 缓存函数，强制它重新读取当前完整文件。
+# 注意：这里故意不用 @st.cache_data / @st.cache_resource。
+# Streamlit Cloud 热更新时，缓存装饰器会调用 inspect.getsource() 分析函数源码；
+# 本文件含大段多行 CSS，云端读到旧/截断源码时会抛 tokenize.TokenError。
+# 改用 session_state 里的轻量缓存，重跑时仍然命中，且完全不依赖 getsource。
 linecache.clearcache()
+_CACHE_TTL_SECONDS = 300
 
 
-@st.cache_data(show_spinner=False, ttl=300)
+def _cache_get(key: str, ttl: int = _CACHE_TTL_SECONDS):
+    cache = st.session_state.get(key)
+    if not cache:
+        return None
+    stamp, value = cache
+    if time.time() - stamp > ttl:
+        return None
+    return value
+
+
+def _cache_set(key: str, value) -> None:
+    st.session_state[key] = (time.time(), value)
+
+
 def load_csv(name: str) -> pd.DataFrame | None:
+    cache_key = f"_load_csv::{name}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
     path = OUTPUT_DIR / name
     if not path.exists():
-        return None
-    try:
-        return pd.read_csv(path)
-    except Exception:
-        return None
+        result = None
+    else:
+        try:
+            result = pd.read_csv(path)
+        except Exception:
+            result = None
+    _cache_set(cache_key, result)
+    return result
 
 
-@st.cache_data(show_spinner=False, ttl=300)
+def _clear_load_csv_cache() -> None:
+    for key in list(st.session_state.keys()):
+        if str(key).startswith("_load_csv::"):
+            st.session_state.pop(key, None)
+
+
+load_csv.clear = _clear_load_csv_cache  # type: ignore[attr-defined]
+
+
 def load_fresh_config() -> dict:
+    cached = _cache_get("_fresh_config")
+    if cached is not None:
+        return cached
     if not CONFIG_PATH.exists():
-        return {}
-    try:
-        with CONFIG_PATH.open("r", encoding="utf-8") as fh:
-            return yaml.safe_load(fh) or {}
-    except Exception:
-        return {}
+        result = {}
+    else:
+        try:
+            with CONFIG_PATH.open("r", encoding="utf-8") as fh:
+                result = yaml.safe_load(fh) or {}
+        except Exception:
+            result = {}
+    _cache_set("_fresh_config", result)
+    return result
+
+
+def _clear_fresh_config_cache() -> None:
+    st.session_state.pop("_fresh_config", None)
+
+
+load_fresh_config.clear = _clear_fresh_config_cache  # type: ignore[attr-defined]
 
 
 def _agent_backup(agent) -> dict:
@@ -1463,18 +1506,39 @@ def activate_agent_dataset(agent, dataset: str) -> None:
             setattr(agent, name, value)
 
 
-@st.cache_resource(show_spinner=False)
 def get_dataco_store():
-    agent = get_agent()
-    backup = _agent_backup(agent)
-    return backup["DataStore"]()
+    """DataCo 保底数据仓库；同一会话内复用，避免每次对话重新读 CSV。"""
+    cached = st.session_state.get("_dataco_store")
+    if cached is None:
+        agent = get_agent()
+        backup = _agent_backup(agent)
+        cached = backup["DataStore"]()
+        st.session_state["_dataco_store"] = cached
+    return cached
 
 
-@st.cache_resource(show_spinner=False)
+def _clear_dataco_store() -> None:
+    st.session_state.pop("_dataco_store", None)
+
+
+get_dataco_store.clear = _clear_dataco_store  # type: ignore[attr-defined]
+
+
 def get_fresh_store():
-    from freshretail_agent.tools_freshretail import FreshDataStore
+    cached = st.session_state.get("_fresh_store")
+    if cached is None:
+        from freshretail_agent.tools_freshretail import FreshDataStore
 
-    return FreshDataStore()
+        cached = FreshDataStore()
+        st.session_state["_fresh_store"] = cached
+    return cached
+
+
+def _clear_fresh_store() -> None:
+    st.session_state.pop("_fresh_store", None)
+
+
+get_fresh_store.clear = _clear_fresh_store  # type: ignore[attr-defined]
 
 
 def get_active_fresh_store():
@@ -1688,7 +1752,6 @@ def log_fresh_kpi(values: dict[str, float | int], snapshot: str) -> None:
 # ---------------------------------------------------------------------------
 # 生鲜版：顶部栏 + KPI
 # ---------------------------------------------------------------------------
-@st.cache_data(show_spinner=False)
 def _fresh_hero_html() -> str:
     """生鲜首页三图 Banner；图片统一裁切为 960×720 后嵌入。"""
     panels = []
@@ -1714,7 +1777,6 @@ def _fresh_hero_html() -> str:
     )
 
 
-@st.cache_data(show_spinner=False)
 def _fresh_hero_carousel_html(
     snapshot: str,
     data_label: str,
@@ -3914,7 +3976,6 @@ def _pager_controls(
     )
 
 
-@st.cache_data(show_spinner=False, ttl=300)
 def _cached_reports(
     display: pd.DataFrame,
     repl: pd.DataFrame,
@@ -3923,6 +3984,23 @@ def _cached_reports(
     filter_note: str,
     source_note: str | None = None,
 ) -> tuple[bytes, bytes | None]:
+    def _frame_sig(frame: pd.DataFrame) -> str:
+        return hashlib.md5(
+            frame.to_csv(index=False).encode("utf-8")
+        ).hexdigest()
+
+    values_sig = tuple(sorted((str(k), str(v)) for k, v in values.items()))
+    cache_key = (
+        snapshot,
+        filter_note,
+        source_note,
+        values_sig,
+        _frame_sig(display),
+        _frame_sig(repl),
+    )
+    cache = st.session_state.get("_reports_cache")
+    if cache and cache[0] == cache_key:
+        return cache[1]
     excel = report_export.build_excel_report(
         display, repl, snapshot, values, filter_note, source_note
     )
@@ -3932,7 +4010,9 @@ def _cached_reports(
         )
     except Exception:
         pdf = None
-    return excel, pdf
+    result = (excel, pdf)
+    st.session_state["_reports_cache"] = (cache_key, result)
+    return result
 
 
 def render_fresh_replenishment(
@@ -6092,6 +6172,7 @@ def main_fresh() -> None:
                 load_fresh_config.clear()
                 get_fresh_store.clear()
                 get_dataco_store.clear()
+                st.session_state.pop("_reports_cache", None)
                 st.session_state["imported_store_cache"] = None
                 st.session_state.pop("imported_materialized_signature", None)
                 st.session_state.pop("fresh_kpi_logged", None)
