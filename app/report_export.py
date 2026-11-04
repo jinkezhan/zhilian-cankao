@@ -12,6 +12,8 @@ from io import BytesIO
 
 import pandas as pd
 
+import product_names
+
 FRESH_UNIT = "kg/份"
 NAVY = "0B2A4A"
 RED_FILL = "FEE4E2"
@@ -36,8 +38,13 @@ def _report_frames(repl: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         _series_label(store, product)
         for store, product in zip(frame["store_id"], frame["product_id"])
     ]
+    frame["商品名称"] = [
+        product_names.product_name(store, product)
+        for store, product in zip(frame["store_id"], frame["product_id"])
+    ]
     columns = [
         "店 / SKU",
+        "商品名称",
         "现有库存",
         "ROP_P90",
         "目标水位",
@@ -375,6 +382,7 @@ def build_pdf_report(
             for _, row in display.head(20).iterrows():
                 display_rows.append(
                     [
+                        str(row.get("商品名称", "")),
                         str(row.get("店 / SKU", "")),
                         _fmt_number(row.get("现有库存（kg/份）", 0)),
                         _fmt_number(row.get("ROP_P90（kg/份）", 0)),
@@ -386,9 +394,17 @@ def build_pdf_report(
             _pdf_table(
                 fig2,
                 [0.04, 0.08, 0.92, 0.8],
-                ["店 / SKU", "现有库存", "ROP_P90", "建议订货", "紧急度", "临期数量"],
+                [
+                    "商品名称",
+                    "店 / SKU",
+                    "现有库存",
+                    "ROP_P90",
+                    "建议订货",
+                    "紧急度",
+                    "临期数量",
+                ],
                 display_rows,
-                [0.3, 0.14, 0.14, 0.14, 0.14, 0.14],
+                [0.16, 0.26, 0.12, 0.12, 0.12, 0.11, 0.11],
                 font_size=7.6,
             )
             pdf.savefig(fig2)

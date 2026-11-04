@@ -47,6 +47,7 @@ if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
 import decision_support  # noqa: E402 - 溯源三方案，纯计算模块（不依赖 Streamlit）
+import product_names  # noqa: E402 - 商品名称映射（演示用）
 import report_export  # noqa: E402 - Excel / PDF 日报导出
 
 _AGENT = None
@@ -59,6 +60,14 @@ def get_agent():
         import agent as agent_module
         _AGENT = agent_module
     return _AGENT
+
+
+def _system_prompt(dataset: str) -> str:
+    """基础系统提示词；生鲜数据源追加商品名 → SKU 映射，便于按品名提问。"""
+    prompt = get_agent().SYSTEM_PROMPT
+    if dataset == "freshretail":
+        prompt = prompt + "\n\n" + product_names.agent_prompt_block()
+    return prompt
 
 
 # ---------------------------------------------------------------------------
@@ -2200,15 +2209,16 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
     tbody td { padding: 10px 6px; }
     .badge { padding: 4px 8px; font-size: 11px; }
     .badge::before { width: 5px; height: 5px; }
-    /* 窄屏重新分配列宽：给紧急度/临期留足空间，数值列等分剩余 */
-    col:nth-child(1) { width: 18% !important; }
-    col:nth-child(2),
+    /* 窄屏重新分配列宽（9 列含商品名称）：给紧急度/临期留足空间 */
+    col:nth-child(1) { width: 16% !important; }
+    col:nth-child(2) { width: 12% !important; }
     col:nth-child(3),
     col:nth-child(4),
     col:nth-child(5),
-    col:nth-child(7) { width: 11.3% !important; }
-    col:nth-child(6) { width: 15% !important; }
-    col:nth-child(8) { width: 10.5% !important; }
+    col:nth-child(6),
+    col:nth-child(8) { width: 10.3% !important; }
+    col:nth-child(7) { width: 13% !important; }
+    col:nth-child(9) { width: 7.5% !important; }
   }
 </style>
 </head>
@@ -2691,7 +2701,8 @@ def render_trace_section(
 
     def _label(key: tuple[int, int]) -> str:
         tier = str(getattr(rows_by_key[key], "urgency", ""))
-        return f"{series_label(*key)} · {tier}" if tier else series_label(*key)
+        label = f"{product_names.product_name(*key)} · {series_label(*key)}"
+        return f"{label} · {tier}" if tier else label
 
     # 用选项指纹做 key，保留同一组选项下的选中状态。
     option_sig = abs(hash(tuple(options))) % 1_000_000
@@ -2779,7 +2790,7 @@ def render_trace_section(
                 activate_agent_dataset(agent, "freshretail")
                 answer, tools = agent.run_turn(
                     [
-                        {"role": "system", "content": agent.SYSTEM_PROMPT},
+                        {"role": "system", "content": _system_prompt("freshretail")},
                         {"role": "user", "content": question},
                     ],
                     get_fresh_store(),
@@ -3072,8 +3083,8 @@ def render_order_panel(view: pd.DataFrame, snapshot: str) -> None:
         options=list(rows_by_key),
         index=None,
         format_func=lambda key: (
-            f"{series_label(*key)} · {rows_by_key[key].urgency} · "
-            f"建议 {int(rows_by_key[key].suggest_qty)}"
+            f"{product_names.product_name(*key)} · {series_label(*key)} · "
+            f"{rows_by_key[key].urgency} · 建议 {int(rows_by_key[key].suggest_qty)}"
         ),
         placeholder="选择一条序列",
         key="order_add_sku",
@@ -3094,7 +3105,8 @@ def render_order_panel(view: pd.DataFrame, snapshot: str) -> None:
         "批量选择 SKU（可多选）",
         options=list(rows_by_key),
         format_func=lambda key: (
-            f"{series_label(*key)} · {rows_by_key[key].urgency}"
+            f"{product_names.product_name(*key)} · {series_label(*key)} · "
+            f"{rows_by_key[key].urgency}"
         ),
         placeholder="选择多条序列，再点批量加入",
         key="order_bulk_pick",
@@ -3139,6 +3151,9 @@ def render_order_panel(view: pd.DataFrame, snapshot: str) -> None:
                 "店 / SKU": series_label(
                     int(item["store_id"]), int(item["product_id"])
                 ),
+                "商品名称": product_names.product_name(
+                    int(item["store_id"]), int(item["product_id"])
+                ),
                 "建议量": int(item["suggest_qty"]),
                 "下单量": int(item["applied_qty"]),
                 "比例": f"{float(item['applied_ratio']):.2f}",
@@ -3155,10 +3170,11 @@ def render_order_panel(view: pd.DataFrame, snapshot: str) -> None:
             "移除一项",
             options=cart_keys,
             index=None,
-            format_func=lambda name: series_label(
-                *[int(part) for part in name.split("-")]
+            format_func=lambda name: (
+                f"{product_names.product_name(*[int(part) for part in name.split('-')])} · "
+                f"{series_label(*[int(part) for part in name.split('-')])}"
             ),
-            placeholder="选择要移除的 SKU",
+            placeholder="选择要移除的商品",
             key=f"order_remove_{remove_sig}",
         )
         if remove_col.button(
@@ -3846,6 +3862,9 @@ def render_fresh_replenishment(
         records.append(
             {
                 "店 / SKU": series_label(row.store_id, row.product_id),
+                "商品名称": product_names.product_name(
+                    row.store_id, row.product_id
+                ),
                 f"现有库存（{FRESH_UNIT}）": round(float(row.on_hand), 2),
                 f"ROP_P90（{FRESH_UNIT}）": round(float(row.rop_p90), 2),
                 f"效期修正目标（{FRESH_UNIT}）": round(target_eff, 2),
@@ -4216,7 +4235,10 @@ def render_fresh_detail(
         "选择 SKU（门店-商品）",
         options=keys,
         index=0,
-        format_func=lambda key: series_label(key[0], key[1]),
+        format_func=lambda key: (
+            f"{product_names.product_name(key[0], key[1])} · "
+            f"{series_label(key[0], key[1])}"
+        ),
         key="fresh_detail_series",
     )
 
@@ -4825,10 +4847,15 @@ def render_chat(
     messages_key = f"agent_messages_{state_key}"
     if display_key not in st.session_state:
         st.session_state[display_key] = []
+    system_content = _system_prompt(dataset)
     if messages_key not in st.session_state:
         st.session_state[messages_key] = [
-            {"role": "system", "content": agent.SYSTEM_PROMPT}
+            {"role": "system", "content": system_content}
         ]
+    else:
+        existing_messages = st.session_state[messages_key]
+        if existing_messages and existing_messages[0].get("role") == "system":
+            existing_messages[0]["content"] = system_content
 
     display = st.session_state[display_key]
     # 历史消息先占位，处理完本轮问题后再填充，保证历史始终在输入框上方。
@@ -5326,7 +5353,8 @@ def render_notification_center(
         else:
             for row in urgent.head(5).itertuples():
                 st.markdown(
-                    f"- **{series_label(int(row.store_id), int(row.product_id))}** · "
+                    f"- **{product_names.product_name(row.store_id, row.product_id)}** · "
+                    f"{series_label(int(row.store_id), int(row.product_id))} · "
                     f"在库 {float(row.on_hand):.2f} · 建议 {int(row.suggest_qty)} 件"
                 )
         st.markdown(f"**临期**（{len(expiring)} 条）")
@@ -5335,7 +5363,8 @@ def render_notification_center(
         else:
             for row in expiring.head(5).itertuples():
                 st.markdown(
-                    f"- **{series_label(int(row.store_id), int(row.product_id))}** · "
+                    f"- **{product_names.product_name(row.store_id, row.product_id)}** · "
+                    f"{series_label(int(row.store_id), int(row.product_id))} · "
                     f"临期 {float(row.expiring_qty):.2f} {FRESH_UNIT}"
                 )
         st.caption("仅页面内提醒；未接入企业微信/钉钉推送。")
@@ -6271,7 +6300,7 @@ def render_global_ai(dataset: str) -> None:
                 st.warning("未配置 DEEPSEEK_API_KEY，无法调用。")
             else:
                 activate_agent_dataset(agent, dataset)
-                messages = [{"role": "system", "content": agent.SYSTEM_PROMPT}]
+                messages = [{"role": "system", "content": _system_prompt(dataset)}]
                 messages += [
                     {"role": item["role"], "content": item["content"]}
                     for item in history
