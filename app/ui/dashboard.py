@@ -1225,6 +1225,132 @@ div[data-testid="stDownloadButton"] button:hover {
   color: #185A96;
 }
 
+/* ---------- 移动端适配（手机 / 窄屏） ---------- */
+@media (max-width: 768px) {
+  html, body { -webkit-text-size-adjust: 100%; }
+  section.main .block-container { padding: 60px 12px 84px !important; }
+
+  /* 顶栏压缩：品牌、更多、门店、铃铛、登录都尽量留在一行 */
+  .top-navbar { padding: 0 10px; gap: 8px; }
+  .nav-links { display: none; }
+  .nav-more { display: block; position: static; transform: none; }
+  .nav-more-panel { left: auto; right: 0; transform: none; top: 60px; }
+  .nav-brand { font-size: 13px; }
+  .nav-logo { width: 26px; height: 26px; font-size: 8.5px; }
+  .nav-right { gap: 6px; }
+  .nav-date, .nav-auth-label { display: none; }
+  .nav-store { height: 28px; padding: 0 6px 0 8px; }
+  .nav-store-value { max-width: 92px; font-size: 11.5px; }
+  .nav-store-select { max-width: 88px; font-size: 11.5px; }
+  .nav-bell-slot, .nav-auth-slot { width: 28px; height: 28px; }
+
+  /* 指标卡在平板上两列，手机上一列 */
+  .ov-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ov-card { padding: 14px 15px; }
+  .ov-primary .ov-value { font-size: 2.4rem; }
+  .ov-value { font-size: 1.9rem; }
+  .reco-card { padding: 14px; }
+  .reco-value { font-size: 2.2rem; }
+  .fresh-hero { min-height: 380px; }
+  .fresh-hero-copy { padding: 26px 18px; }
+  .fresh-hero-copy h1 { font-size: 22px; }
+  .fresh-hero-copy p { font-size: 13px; line-height: 1.7; }
+
+  /* 通知中心 / 全局问 AI 浮层贴边显示 */
+  div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .notif-panel-anchor) {
+    top: 66px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-height: 68vh;
+  }
+  div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .global-ai-panel-anchor) {
+    right: 12px;
+    left: 12px;
+    bottom: 84px;
+    width: auto;
+    max-width: none;
+    max-height: 68vh;
+    padding: 12px 12px 14px;
+  }
+  div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .global-ai-toggle-anchor) {
+    right: 14px;
+    bottom: 14px;
+    width: 54px;
+    height: 54px;
+  }
+  div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .global-ai-toggle-anchor) button {
+    width: 54px !important;
+    height: 54px !important;
+    min-height: 54px !important;
+  }
+
+  /* 图表和标签页在手机上横向滑动，避免文字被压成一条线 */
+  .chart-svg { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .chart-svg svg { min-width: 560px; }
+  [data-baseweb="tab-list"] { overflow-x: auto; flex-wrap: nowrap !important; }
+  [data-baseweb="tab"] { white-space: nowrap; padding-left: 10px; padding-right: 10px; }
+
+  /* iOS 输入框聚焦不会自动放大 */
+  input, textarea, select,
+  [data-baseweb="input"] input,
+  [data-baseweb="textarea"] textarea,
+  [data-baseweb="select"] { font-size: 16px !important; }
+
+  /* 触控目标稍大一点 */
+  div[data-testid="stButton"] button,
+  div[data-testid="stDownloadButton"] button,
+  div[data-testid="stFormSubmitButton"] button { min-height: 40px; }
+  [data-testid="stDataFrame"] { font-size: 12px; }
+  [data-testid="stChatMessage"] { padding-left: 8px; padding-right: 8px; }
+  h1 { font-size: 1.55rem !important; }
+  h2 { font-size: 1.3rem !important; }
+  h3 { font-size: 1.12rem !important; }
+}
+
+@media (max-width: 640px) {
+  /* 手机上列全部上下堆叠，避免两列各 150px 无法阅读 */
+  [data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; gap: 10px !important; }
+  [data-testid="stHorizontalBlock"] > [data-testid="column"],
+  [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+  }
+  /* 固定浮层内部保持一行 */
+  div[data-testid="stVerticalBlock"]:has(.global-ai-panel-anchor) [data-testid="stHorizontalBlock"],
+  div[data-testid="stVerticalBlock"]:has(.notif-panel-anchor) [data-testid="stHorizontalBlock"] {
+    flex-wrap: nowrap !important;
+  }
+  div[data-testid="stVerticalBlock"]:has(.global-ai-panel-anchor) [data-testid="column"],
+  div[data-testid="stVerticalBlock"]:has(.notif-panel-anchor) [data-testid="column"],
+  div[data-testid="stVerticalBlock"]:has(.global-ai-panel-anchor) [data-testid="stColumn"],
+  div[data-testid="stVerticalBlock"]:has(.notif-panel-anchor) [data-testid="stColumn"] {
+    flex: 1 1 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+  }
+  .kpi-grid, .metric-grid { grid-template-columns: 1fr; }
+  /* 刷新按钮在手机上保持紧凑，不要拉满整行 */
+  div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .data-refresh-anchor) div[data-testid="stButton"] button {
+    width: auto !important;
+    min-width: 52px;
+  }
+}
+
+@media (max-width: 480px) {
+  .nav-brand { display: none; }
+  .nav-store-value, .nav-store-select { max-width: 76px; }
+  .ov-grid, .kpi-grid, .metric-grid { grid-template-columns: 1fr; }
+  .ov-primary .ov-value { font-size: 2.1rem; }
+  .ov-value { font-size: 1.75rem; }
+  .reco-value { font-size: 2rem; }
+  .fresh-hero-copy h1 { font-size: 20px; }
+  .fresh-hero-copy p { font-size: 12.5px; }
+}
+
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -2145,7 +2271,8 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
     min-height: 0;
     width: 100%;
     overflow-y: auto;
-    overflow-x: hidden;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
     border-radius: 14px;
     padding: 0;
   }
@@ -2219,12 +2346,12 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
   .badge-muted { color: #475569; background: #E2E8F0; }
   .expiry-ok { color: #2E9E5B; font-size: 13px; font-weight: 700; }
   @media (max-width: 900px) {
-    table.fresh-card-table { font-size: 11.5px; }
+    table.fresh-card-table { font-size: 11.5px; min-width: 720px; }
     thead th { padding: 9px 6px; font-size: 10.5px; }
     tbody td { padding: 10px 6px; }
     .badge { padding: 4px 8px; font-size: 11px; }
     .badge::before { width: 5px; height: 5px; }
-    /* 列宽由服务端按实际列数写入 colgroup，窄屏不再硬编码列序。 */
+    /* 列宽由服务端按实际列数写入 colgroup；窄屏横向滑动，不压缩列。 */
   }
 </style>
 </head>
