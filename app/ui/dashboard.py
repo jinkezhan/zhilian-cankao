@@ -5003,6 +5003,10 @@ def main_dataco() -> None:
 def _streamlit_secret(name: str) -> str:
     """读取 Streamlit Cloud 的 st.secrets；本地没有 secrets 时返回空串。"""
     try:
+        # 本地没有 secrets.toml 时，直接 get 会先渲染红色错误框；
+        # load_if_toml_exists() 只返回 False，不会弹错。
+        if not st.secrets.load_if_toml_exists():
+            return ""
         value = st.secrets.get(name, "")
         return str(value).strip() if value is not None else ""
     except Exception:

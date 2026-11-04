@@ -145,10 +145,14 @@ def _key_looks_valid(key: str) -> bool:
 
 
 def _streamlit_secret(name: str) -> str:
-    """读取 Streamlit Cloud 的 st.secrets；本地/命令行环境自动返回空串。"""
+    """读取 Streamlit Cloud 的 st.secrets；本地没有 secrets.toml 时静默返回空串。"""
     try:
         import streamlit as st
 
+        # 不能直接 get：没有 secrets.toml 时 Streamlit 会先渲染红色错误框。
+        # load_if_toml_exists() 在文件不存在时只返回 False，不会弹错。
+        if not st.secrets.load_if_toml_exists():
+            return ""
         value = st.secrets.get(name, "")
         return str(value).strip() if value is not None else ""
     except Exception:

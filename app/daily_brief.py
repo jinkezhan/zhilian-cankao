@@ -498,6 +498,10 @@ def _streamlit_secret(name: str) -> str:
     try:
         import streamlit as st
 
+        # 本地没有 secrets.toml 时，st.secrets.get() 会先渲染红色错误框；
+        # load_if_toml_exists() 只返回 False，不弹错。
+        if not st.secrets.load_if_toml_exists():
+            return ""
         value = st.secrets.get(name, "")
         return str(value).strip() if value is not None else ""
     except Exception:
