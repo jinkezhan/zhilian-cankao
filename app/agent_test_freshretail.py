@@ -249,14 +249,19 @@ CASES = [
         "expect": "调用 recommend_replenishment；56 件；计划补货；上限约 81.44",
     },
     {
-        "id": 13, "category": "品类脱敏",
+        "id": 13, "category": "品名映射",
         "question": "SKU 18-300 是什么商品？",
-        "expect": "说明品类已脱敏，只能用 SKU 18-300 标识；不编造品类名",
+        "expect": "按映射回答「水东芥菜（18-300）」；不编造其他品名",
     },
     {
         "id": 14, "category": "建议补货+临期",
         "question": "SKU 555-300 该补多少？临期怎么办？",
         "expect": "调用 recommend_replenishment；47 件；建议补货；临期 6.08 件优先促销",
+    },
+    {
+        "id": 15, "category": "按品名提问",
+        "question": "黑猪五花肉（145-802）今天该补多少？",
+        "expect": "品名映射到 product_id 802，调用 recommend_replenishment；6 件；紧急",
     },
 ]
 
@@ -341,12 +346,8 @@ def _judge(case_id: int, answer: str, logs: list[dict]) -> tuple[bool, str]:
         )
         return ok, "计划补货/效期上限"
     if case_id == 13:
-        ok = (
-            "18-300" in answer
-            and ("脱敏" in answer or "只有 SKU" in answer or "无法" in answer)
-            and not any(word in answer for word in FORBIDDEN_NAMES)
-        )
-        return ok, "品类脱敏且无编造"
+        ok = "水东芥菜" in answer and "18-300" in answer
+        return ok, "按映射识别具体品名"
     if case_id == 14:
         ok = (
             "recommend_replenishment" in names
@@ -355,6 +356,13 @@ def _judge(case_id: int, answer: str, logs: list[dict]) -> tuple[bool, str]:
             and ("临期" in answer or "促销" in answer)
         )
         return ok, "建议补货+临期"
+    if case_id == 15:
+        ok = (
+            "recommend_replenishment" in names
+            and "145-802" in answer and "黑猪五花肉" in answer
+            and "6" in flat and "紧急" in answer
+        )
+        return ok, "按品名映射到 SKU"
     return False, "未知用例"
 
 

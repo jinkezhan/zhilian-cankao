@@ -908,6 +908,14 @@ def use_dataset(name: str) -> None:
 
     DataStore = FreshDataStore
     SYSTEM_PROMPT = FRESH_SYSTEM_PROMPT
+    # 命令行直连生鲜数据源时，也要带上具体品名 → product_id 映射；
+    # 看板侧由 dashboard._system_prompt() 追加，二者不会重复。
+    try:
+        from product_names import agent_prompt_block
+    except ImportError:
+        agent_prompt_block = None
+    if agent_prompt_block is not None:
+        SYSTEM_PROMPT = SYSTEM_PROMPT + "\n\n" + agent_prompt_block()
     TOOLS = FRESH_TOOLS
     TOOL_FUNCS = FRESH_TOOL_FUNCS
     summarize_result = summarize_fresh_result

@@ -123,7 +123,7 @@ QUICK_QUESTIONS = [
 ]
 FRESH_QUICK_QUESTIONS = [
     "哪些 SKU 最紧急？",
-    "SKU 145-802 该补多少？",
+    "黑猪五花肉（145-802）该补多少？",
     "哪些货快过期了？",
 ]
 
@@ -2030,10 +2030,15 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
     elif column_count == 2:
         first_width = 50
     elif column_count <= 4:
-        first_width = 28
+        first_width = 32
     else:
-        first_width = 18
-    fixed_widths = {"店 / SKU": first_width, "紧急度": 13, "临期": 8}
+        first_width = 23
+    fixed_widths = {
+        "店 / SKU": first_width,
+        "商品（门店-编号）": first_width,
+        "紧急度": 13,
+        "临期": 8,
+    }
     present_fixed = {
         col: width for col, width in fixed_widths.items() if col in display.columns
     }
@@ -2096,7 +2101,7 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
                         '<td data-sort="0">'
                         '<span class="expiry-ok" title="未临期">✓</span></td>'
                     )
-            elif col == "店 / SKU":
+            elif col in ("店 / SKU", "商品（门店-编号）"):
                 cells.append(
                     f'<td class="sku" data-sort="{text}">{text}</td>'
                 )
@@ -2209,16 +2214,7 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
     tbody td { padding: 10px 6px; }
     .badge { padding: 4px 8px; font-size: 11px; }
     .badge::before { width: 5px; height: 5px; }
-    /* 窄屏重新分配列宽（9 列含商品名称）：给紧急度/临期留足空间 */
-    col:nth-child(1) { width: 16% !important; }
-    col:nth-child(2) { width: 12% !important; }
-    col:nth-child(3),
-    col:nth-child(4),
-    col:nth-child(5),
-    col:nth-child(6),
-    col:nth-child(8) { width: 10.3% !important; }
-    col:nth-child(7) { width: 13% !important; }
-    col:nth-child(9) { width: 7.5% !important; }
+    /* 列宽由服务端按实际列数写入 colgroup，窄屏不再硬编码列序。 */
   }
 </style>
 </head>
@@ -3148,10 +3144,7 @@ def render_order_panel(view: pd.DataFrame, snapshot: str) -> None:
     if cart:
         cart_rows = [
             {
-                "店 / SKU": series_label(
-                    int(item["store_id"]), int(item["product_id"])
-                ),
-                "商品名称": product_names.product_name(
+                "商品（门店-编号）": product_names.sku_display(
                     int(item["store_id"]), int(item["product_id"])
                 ),
                 "建议量": int(item["suggest_qty"]),
@@ -3821,7 +3814,16 @@ def render_fresh_replenishment(
         keys = view["_label"].str.replace("SKU ", "", regex=False).str.replace(
             "-", "", regex=False
         )
-        view = view[keys.str.contains(query, case=False, regex=False)]
+        names = view.assign(
+            _name=[
+                product_names.product_name(s, p)
+                for s, p in zip(view["store_id"], view["product_id"])
+            ]
+        )["_name"]
+        view = view[
+            keys.str.contains(query, case=False, regex=False)
+            | names.str.contains(query, case=False, regex=False)
+        ]
 
     view = view.assign(
         _rank=view["urgency"].map(lambda x: URGENCY_RANK.get(str(x), 9)),
@@ -3861,8 +3863,7 @@ def render_fresh_replenishment(
         expiring = float(row.expiring_qty)
         records.append(
             {
-                "店 / SKU": series_label(row.store_id, row.product_id),
-                "商品名称": product_names.product_name(
+                "商品（门店-编号）": product_names.sku_display(
                     row.store_id, row.product_id
                 ),
                 f"现有库存（{FRESH_UNIT}）": round(float(row.on_hand), 2),
@@ -4323,7 +4324,7 @@ def render_fresh_detail(
     st.markdown(
         f"""
         <div class="reco-card">
-          <div class="reco-label">今天的补货建议 · {html.escape(series_label(*selected))}</div>
+          <div class="reco-label">今天的补货建议 · {html.escape(product_names.sku_display(*selected))}</div>
           <div class="reco-value">{int(row['suggest_qty']):,}<span class="reco-unit">{FRESH_UNIT}</span></div>
           <span class="badge {badge_class(urgency)}">{html.escape(urgency)}</span>
           <div class="reco-reason">{html.escape(advice)}</div>

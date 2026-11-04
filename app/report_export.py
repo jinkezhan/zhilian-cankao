@@ -21,10 +21,6 @@ AMBER_FILL = "FFF7E8"
 GRAY = "6B7F94"
 
 
-def _series_label(store_id: object, product_id: object) -> str:
-    return f"SKU {int(store_id)}-{int(product_id)}"
-
-
 def _fmt_number(value: object, digits: int = 2) -> str:
     try:
         return f"{float(value):,.{digits}f}"
@@ -34,17 +30,12 @@ def _fmt_number(value: object, digits: int = 2) -> str:
 
 def _report_frames(repl: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     frame = repl.copy()
-    frame["店 / SKU"] = [
-        _series_label(store, product)
-        for store, product in zip(frame["store_id"], frame["product_id"])
-    ]
-    frame["商品名称"] = [
-        product_names.product_name(store, product)
+    frame["商品（门店-编号）"] = [
+        product_names.sku_display(store, product)
         for store, product in zip(frame["store_id"], frame["product_id"])
     ]
     columns = [
-        "店 / SKU",
-        "商品名称",
+        "商品（门店-编号）",
         "现有库存",
         "ROP_P90",
         "目标水位",
@@ -323,7 +314,7 @@ def build_pdf_report(
                      fontsize=11, fontweight="bold", color="#B42318")
             urgent_rows = [
                 [
-                    row["店 / SKU"],
+                    row["商品（门店-编号）"],
                     _fmt_number(row["现有库存"]),
                     _fmt_number(row["ROP_P90"]),
                     str(int(row["建议订货"])),
@@ -333,16 +324,16 @@ def build_pdf_report(
             _pdf_table(
                 fig,
                 [0.06, 0.69, 0.88, 0.14],
-                ["店 / SKU", "现有库存", "ROP_P90", "建议订货"],
+                ["商品（门店-编号）", "现有库存", "ROP_P90", "建议订货"],
                 urgent_rows,
-                [0.42, 0.2, 0.2, 0.18],
+                [0.46, 0.18, 0.18, 0.18],
             )
 
             fig.text(0.06, 0.645, f"临期（{len(expiring)} 条）",
                      fontsize=11, fontweight="bold", color="#B45309")
             expiring_rows = [
                 [
-                    row["店 / SKU"],
+                    row["商品（门店-编号）"],
                     _fmt_number(row["临期数量"]),
                     _fmt_number(row["现有库存"]),
                     str(int(row["建议订货"])),
@@ -352,9 +343,9 @@ def build_pdf_report(
             _pdf_table(
                 fig,
                 [0.06, 0.49, 0.88, 0.14],
-                ["店 / SKU", "临期数量", "现有库存", "建议订货"],
+                ["商品（门店-编号）", "临期数量", "现有库存", "建议订货"],
                 expiring_rows,
-                [0.42, 0.2, 0.2, 0.18],
+                [0.46, 0.18, 0.18, 0.18],
             )
 
             fig.text(
@@ -382,8 +373,7 @@ def build_pdf_report(
             for _, row in display.head(20).iterrows():
                 display_rows.append(
                     [
-                        str(row.get("商品名称", "")),
-                        str(row.get("店 / SKU", "")),
+                        str(row.get("商品（门店-编号）", "")),
                         _fmt_number(row.get("现有库存（kg/份）", 0)),
                         _fmt_number(row.get("ROP_P90（kg/份）", 0)),
                         str(int(row.get("建议订货（kg/份）", 0))),
@@ -395,8 +385,7 @@ def build_pdf_report(
                 fig2,
                 [0.04, 0.08, 0.92, 0.8],
                 [
-                    "商品名称",
-                    "店 / SKU",
+                    "商品（门店-编号）",
                     "现有库存",
                     "ROP_P90",
                     "建议订货",
@@ -404,7 +393,7 @@ def build_pdf_report(
                     "临期数量",
                 ],
                 display_rows,
-                [0.16, 0.26, 0.12, 0.12, 0.12, 0.11, 0.11],
+                [0.34, 0.13, 0.13, 0.13, 0.12, 0.12],
                 font_size=7.6,
             )
             pdf.savefig(fig2)

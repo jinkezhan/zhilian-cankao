@@ -45,7 +45,7 @@ $env:PYTHONUTF8=1; $env:PYTHONIOENCODING='utf-8'
   `min(target_level, 保质期内预计可售量 × expiry_cap_multiplier)`。
   可售量由 `freshretail_forecast_predictions.csv` 的 P50 从到货日起累加 `shelf_life_days` 天得到；倍数、提前期、快照日来自 `config/freshretail_inventory.yaml`。
 - **快照日期**：取预测表 `dt` 的最大值（当前 `2024-07-02`）。
-- **商品名称统一写 `SKU {store_id}-{product_id}`**。品类已官方脱敏，禁止编造“苹果 / 蔬菜 / 猪肉”等具体品名。
+- **商品名称按演示品名映射展示**：`app/product_names.py` 为补货快照中的全部 50 个 `product_id` 硬编码了具体生鲜品名，表格首列格式为「具体品名（门店-编号）」，例如 `黑猪五花肉（145-802）`；未在映射表中的编号从真实品名池稳定分配。原始数据已脱敏，这些名称仅用于演示，不对外宣称是官方品类。
 - **生鲜页面不出现 DataCo 的 SKU 编号与数字**；DataCo 分支只在切到「制造企业（保底）」时渲染。
 
 ## 五个区块
