@@ -4836,7 +4836,7 @@ def _ask_agent(
 def _render_chat_history(
     display: list[dict], source_note: str | None, localize: bool = False
 ) -> None:
-    for i, message in enumerate(display):
+    for message in display:
         role = message.get("role", "assistant")
         with st.chat_message(role):
             content = str(message.get("content", ""))
@@ -4851,9 +4851,7 @@ def _render_chat_history(
                     st.caption(note)
             tools = message.get("tools") or []
             if role == "assistant" and tools:
-                with st.expander(
-                    "查看工具调用", expanded=(i == len(display) - 1)
-                ):
+                with st.expander("查看工具调用", expanded=False):
                     _tool_call_markdown(tools, localize=localize)
 
 
