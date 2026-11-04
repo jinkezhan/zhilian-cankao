@@ -3727,6 +3727,17 @@ def render_order_panel(view: pd.DataFrame, snapshot: str) -> None:
         st.caption("补货单为空。")
 
     items = _load_decision_items()
+    allowed_batches = _allowed_stores()
+    if (
+        allowed_batches is not None
+        and not items.empty
+        and "store_id" in items.columns
+    ):
+        items = items[
+            pd.to_numeric(items["store_id"], errors="coerce").isin(
+                allowed_batches
+            )
+        ].copy()
     latest = _latest_batch(items)
     if latest is not None:
         batch_id, sub, status = latest
