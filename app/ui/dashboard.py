@@ -18,6 +18,7 @@ import base64
 import hashlib
 import hmac
 import html
+import importlib
 import io
 import json
 import linecache
@@ -49,6 +50,13 @@ if str(APP_DIR) not in sys.path:
 import decision_support  # noqa: E402 - 溯源三方案，纯计算模块（不依赖 Streamlit）
 import product_names  # noqa: E402 - 商品名称映射（演示用）
 import report_export  # noqa: E402 - Excel / PDF 日报导出
+
+# Streamlit 热更新只重跑主脚本，已导入的纯模块仍留在内存里。云端偶尔会出现
+# “dashboard.py 已是新代码、product_names 还是旧模块”的情况，这里检测到旧版就
+# 强制重载，避免 AttributeError: module 'product_names' has no attribute 'sku_display'。
+if not hasattr(product_names, "sku_display"):
+    importlib.reload(product_names)
+    importlib.reload(report_export)
 
 _AGENT = None
 
