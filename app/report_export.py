@@ -14,6 +14,8 @@ import pandas as pd
 
 import product_names
 
+REPORT_EXPORT_VERSION = 2
+
 FRESH_UNIT = "kg/份"
 NAVY = "0B2A4A"
 RED_FILL = "FEE4E2"
@@ -28,12 +30,24 @@ def _fmt_number(value: object, digits: int = 2) -> str:
         return str(value)
 
 
+def _display_labels(frame: pd.DataFrame) -> list[str]:
+    has_names = "product_name" in frame.columns
+    labels: list[str] = []
+    for store, product, name in zip(
+        frame["store_id"],
+        frame["product_id"],
+        frame["product_name"] if has_names else [""] * len(frame),
+    ):
+        text = "" if name is None or pd.isna(name) else str(name).strip()
+        if not text or text.lower() == "nan":
+            text = product_names.product_name(store, product)
+        labels.append(f"{text}（{int(store)}-{int(product)}）")
+    return labels
+
+
 def _report_frames(repl: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     frame = repl.copy()
-    frame["商品（门店-编号）"] = [
-        product_names.sku_display(store, product)
-        for store, product in zip(frame["store_id"], frame["product_id"])
-    ]
+    frame["商品（门店-编号）"] = _display_labels(frame)
     columns = [
         "商品（门店-编号）",
         "现有库存",
@@ -138,6 +152,7 @@ def build_excel_report(
     snapshot: str,
     values: dict,
     filter_note: str = "全部门店 / 全部紧急度",
+    source_note: str | None = None,
 ) -> bytes:
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
@@ -208,7 +223,7 @@ def build_excel_report(
     overview.column_dimensions["C"].width = 46
     note_row = 6 + len(rows)
     overview.merge_cells(f"A{note_row}:C{note_row}")
-    overview[f"A{note_row}"] = (
+    overview[f"A{note_row}"] = source_note or (
         "数据来源：output/freshretail_*；本报告由系统自动生成，"
         "数字口径以页面与交付表为准。"
     )
@@ -271,6 +286,7 @@ def build_pdf_report(
     snapshot: str,
     values: dict,
     filter_note: str = "全部门店 / 全部紧急度",
+    source_note: str | None = None,
 ) -> bytes | None:
     try:
         import matplotlib
@@ -351,8 +367,11 @@ def build_pdf_report(
             fig.text(
                 0.06,
                 0.08,
-                "数据来源：output/freshretail_*；本报告由系统自动生成，"
-                "数字口径以页面与交付表为准。",
+                source_note
+                or (
+                    "数据来源：output/freshretail_*；本报告由系统自动生成，"
+                    "数字口径以页面与交付表为准。"
+                ),
                 fontsize=8.5,
                 color="#6B7F94",
             )

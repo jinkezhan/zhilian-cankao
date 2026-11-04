@@ -48,19 +48,53 @@ if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
 import decision_support  # noqa: E402 - 溯源三方案，纯计算模块（不依赖 Streamlit）
+import imported_data  # noqa: E402 - 用户导入数据的补货计算
 import product_names  # noqa: E402 - 商品名称映射（演示用）
 import report_export  # noqa: E402 - Excel / PDF 日报导出
 
 # Streamlit 热更新只重跑主脚本，已导入的纯模块仍留在内存里。云端偶尔会出现
 # “dashboard.py 已是新代码、product_names 还是旧模块”的情况，这里检测到旧版就
 # 强制重载，避免 AttributeError: module 'product_names' has no attribute 'sku_display'。
-if not hasattr(product_names, "sku_display") or not hasattr(
-    product_names, "localize_sku_text"
+if (
+    getattr(product_names, "PRODUCT_NAMES_VERSION", 0) < 3
+    or getattr(imported_data, "IMPORTED_DATA_VERSION", 0) < 2
+    or getattr(report_export, "REPORT_EXPORT_VERSION", 0) < 2
+    or not hasattr(product_names, "sku_display")
 ):
     importlib.reload(product_names)
+    importlib.reload(imported_data)
     importlib.reload(report_export)
 
 _AGENT = None
+
+
+def _imported_names() -> dict[tuple[int, int], str]:
+    """当前会话导入数据的品名映射；演示模式为空。"""
+    return st.session_state.get("imported_name_map") or {}
+
+
+def _display_name(store_id: object, product_id: object) -> str:
+    try:
+        store, pid = int(store_id), int(product_id)
+    except (TypeError, ValueError):
+        return product_names.product_name(store_id, product_id)
+    name = _imported_names().get((store, pid))
+    return name or product_names.product_name(store, pid)
+
+
+def _display_sku(store_id: object, product_id: object) -> str:
+    try:
+        store, pid = int(store_id), int(product_id)
+    except (TypeError, ValueError):
+        return product_names.sku_display(store_id, product_id)
+    name = _imported_names().get((store, pid))
+    if name:
+        return f"{name}（{store}-{pid}）"
+    return product_names.sku_display(store, pid)
+
+
+def _localize_sku_text(text: object) -> str:
+    return product_names.localize_sku_text(text, _imported_names() or None)
 
 
 def get_agent():
@@ -73,10 +107,14 @@ def get_agent():
 
 
 def _system_prompt(dataset: str) -> str:
-    """基础系统提示词；生鲜数据源追加商品名 → SKU 映射，便于按品名提问。"""
+    """基础系统提示词；生鲜数据源追加商品名映射与当前导入数据事实。"""
     prompt = get_agent().SYSTEM_PROMPT
     if dataset == "freshretail":
-        prompt = prompt + "\n\n" + product_names.agent_prompt_block()
+        names = _imported_names()
+        prompt = prompt + "\n\n" + product_names.agent_prompt_block(names or None)
+        facts = st.session_state.get("imported_prompt_facts")
+        if facts:
+            prompt = prompt + "\n\n" + str(facts)
     return prompt
 
 
@@ -1439,6 +1477,31 @@ def get_fresh_store():
     return FreshDataStore()
 
 
+def get_active_fresh_store():
+    """导入模式用内存 CSV 构建的 store；演示模式用系统快照。"""
+    imported_dir = st.session_state.get("imported_agent_dir")
+    if not imported_dir:
+        return get_fresh_store()
+    signature = (
+        st.session_state.get("imported_signature"),
+        st.session_state.get("imported_snapshot"),
+    )
+    cached = st.session_state.get("imported_store_cache")
+    if cached and cached.get("signature") == signature:
+        return cached["store"]
+    from freshretail_agent.tools_freshretail import FreshDataStore
+
+    store = FreshDataStore(data_dir=Path(imported_dir))
+    store.snapshot_date = str(
+        st.session_state.get("imported_snapshot") or store.snapshot_date
+    )
+    st.session_state["imported_store_cache"] = {
+        "signature": signature,
+        "store": store,
+    }
+    return store
+
+
 def _as_date(df: pd.DataFrame, column: str) -> pd.DataFrame:
     out = df.copy()
     out[column] = pd.to_datetime(out[column], errors="coerce")
@@ -2043,6 +2106,7 @@ def render_fresh_kpi(
     values: dict[str, float | int],
     snapshot: str,
     metrics: pd.DataFrame | None = None,
+    imported: bool = False,
 ) -> None:
     wmape = fresh_model_wmape(metrics)
     accuracy = (1.0 - wmape) * 100 if wmape is not None else None
@@ -2094,6 +2158,19 @@ def render_fresh_kpi(
             ),
         },
     ]
+
+    if imported:
+        cards[3] = {
+            "label": "日均销量合计",
+            "value": f"{float(values.get('daily_total', 0.0)):,.1f}",
+            "unit": FRESH_UNIT,
+            "sub": (
+                f"覆盖 {int(values.get('store_count', 0)):,} 家门店"
+                " · 导入数据，不做模型精度评估"
+            ),
+            "tone": "",
+            "hint": "导入数据按日均销量估算，不评估模型 WMAPE",
+        }
 
     cards_html = []
     for card in cards:
@@ -2423,162 +2500,133 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
 
 
 # ---------------------------------------------------------------------------
-# 底部数据导入（CSV / Excel）
+# 底部数据导入：完整接管 KPI / 表格 / 导出 / Agent
+# 解析、清洗、库存口径重算都在 app/imported_data.py，本段只负责 UI 与会话状态。
 # ---------------------------------------------------------------------------
-_IMPORT_REQUIRED_FIELDS = ("SKU", "库存", "销量")
-_IMPORT_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
-    "SKU": ("SKU", "sku_id", "商品编码", "物料编码", "店 / SKU", "序列"),
-    "库存": (
-        "库存",
-        "现有库存",
-        "当前库存",
-        "库存数量",
-        "on_hand",
-        "current_stock",
-        "stock",
-        "inventory",
-    ),
-    "销量": (
-        "销量",
-        "销售量",
-        "日均销量",
-        "销量指数",
-        "sales",
-        "sales_qty",
-        "demand",
-        "actual_qty",
-        "qty",
-    ),
-    "建议订货": ("建议订货", "建议补货量", "补货量", "suggest_qty", "order_qty"),
-    "紧急度": ("紧急度", "库存状态", "状态", "urgency", "priority"),
-    "临期数量": ("临期数量", "临期数", "expiring_qty", "expiring"),
-}
 
 
-def _normalize_import_name(name: object) -> str:
-    text = str(name or "").strip().lower()
-    text = re.sub(r"[（(][^）)]*[）)]", "", text)
-    return re.sub(r"[\s_\-/]+", "", text)
+def _import_temp_dir() -> Path:
+    directory = st.session_state.get("imported_temp_dir")
+    if directory:
+        return Path(directory)
+    import tempfile
+
+    directory = Path(tempfile.mkdtemp(prefix="zhilian_imported_"))
+    st.session_state["imported_temp_dir"] = str(directory)
+    return directory
 
 
-def _match_import_columns(df: pd.DataFrame) -> dict[str, str]:
-    normalized: dict[str, str] = {}
-    for col in df.columns:
-        normalized.setdefault(_normalize_import_name(col), col)
-    mapping: dict[str, str] = {}
-    used: set[str] = set()
-    for field, aliases in _IMPORT_COLUMN_ALIASES.items():
-        for alias in aliases:
-            col = normalized.get(_normalize_import_name(alias))
-            if col is not None and col not in used:
-                mapping[field] = col
-                used.add(col)
-                break
-    return mapping
-
-
-def _read_uploaded_table(uploaded) -> pd.DataFrame:
-    data = uploaded.getvalue()
-    name = str(uploaded.name).lower()
-    if name.endswith(".csv"):
-        last_error: Exception | None = None
-        for encoding in ("utf-8-sig", "gbk", "utf-8"):
-            try:
-                return pd.read_csv(io.BytesIO(data), encoding=encoding)
-            except UnicodeDecodeError as exc:
-                last_error = exc
-        raise ValueError("CSV 编码无法识别，请另存为 UTF-8 后重试。") from last_error
-    if name.endswith(".xlsx"):
-        return pd.read_excel(io.BytesIO(data), engine="openpyxl")
-    raise ValueError("仅支持 CSV / XLSX 文件。")
-
-
-def _prepare_import_frame(
-    df: pd.DataFrame, mapping: dict[str, str]
-) -> pd.DataFrame:
-    canonical = pd.DataFrame({field: df[col] for field, col in mapping.items()})
-    present_required = [
-        field for field in _IMPORT_REQUIRED_FIELDS if field in canonical.columns
-    ]
-    if not present_required:
-        return canonical.iloc[0:0]
-    cleaned = canonical.dropna(subset=present_required).copy()
-    for field in ("库存", "销量", "建议订货", "临期数量"):
-        if field in cleaned.columns:
-            cleaned[field] = pd.to_numeric(cleaned[field], errors="coerce")
-    numeric_required = [
-        field for field in ("库存", "销量") if field in cleaned.columns
-    ]
-    if numeric_required:
-        cleaned = cleaned.dropna(subset=numeric_required)
-    return cleaned.reset_index(drop=True)
-
-
-def _store_import(
-    frame: pd.DataFrame, partial: bool, missing: list[str], filename: str
-) -> None:
-    st.session_state["imported_table"] = frame.copy()
-    st.session_state["imported_meta"] = {
-        "partial": partial,
-        "missing": list(missing),
-        "filename": filename,
-        "imported_at": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"),
-    }
-    st.session_state["use_imported_data"] = True
-
-
-def _render_imported_inventory(imported: pd.DataFrame) -> None:
-    display = pd.DataFrame()
-    if "SKU" in imported.columns:
-        display["店 / SKU"] = imported["SKU"].astype(str)
-    else:
-        display["店 / SKU"] = [f"行 {index + 1}" for index in range(len(imported))]
-    if "库存" in imported.columns:
-        display["现有库存"] = (
-            pd.to_numeric(imported["库存"], errors="coerce").fillna(0).round(2)
-        )
-    if "销量" in imported.columns:
-        display["销量"] = (
-            pd.to_numeric(imported["销量"], errors="coerce").fillna(0).round(2)
-        )
-    if "建议订货" in imported.columns:
-        display["建议订货"] = (
-            pd.to_numeric(imported["建议订货"], errors="coerce")
-            .fillna(0)
-            .round(0)
-            .astype(int)
-        )
-    if "紧急度" in imported.columns:
-        display["紧急度"] = imported["紧急度"].astype(str)
-    if "临期数量" in imported.columns:
-        qty = pd.to_numeric(imported["临期数量"], errors="coerce").fillna(0)
-        display["临期"] = ["是" if value > 0 else "" for value in qty]
-
-    st.markdown(
-        '<div class="import-banner"><span class="import-dot"></span>'
-        f"当前清单：自定义导入数据 · {len(imported):,} 行"
-        '<span class="import-hint">KPI / 预测仍使用系统快照</span></div>',
-        unsafe_allow_html=True,
+def _imported_prompt_facts(dataset, values: dict) -> str:
+    repl = dataset.repl
+    normal = int((repl["urgency"].astype(str) == "正常").sum())
+    planned = int((repl["urgency"].astype(str) == "计划补货").sum())
+    return (
+        "【当前会话：自定义导入数据（以此为准）】\n"
+        f"看板已切换为导入数据，共 {len(repl):,} 条序列；"
+        f"紧急 {int(values.get('urgent', 0))}、"
+        f"建议补货 {int(values.get('advised', 0))}、"
+        f"计划补货 {planned}、正常 {normal}；"
+        f"临期 {int(values.get('expiring_series', 0))} 条 / "
+        f"{float(values.get('expiring_qty', 0.0)):.2f}。\n"
+        f"当前快照日期：{dataset.snapshot}；预测窗口日期以工具返回的 days[].dt 为准。\n"
+        "上文的「200 条序列」「紧急 2 / 建议补货 153 / 计划补货 45 / 正常 0」"
+        "以及「补货快照 2024-07-02」「7 天预测表 2024-06-26~07-02」均为系统演示"
+        "数据描述，在本次会话中全部作废；一律以工具返回和本段为准。"
     )
-    table_height = min(560, 150 + 46 * len(display))
-    components.html(_fresh_inventory_table_html(display), height=table_height)
-    if st.button("恢复系统数据", key="restore_system_data"):
-        st.session_state["use_imported_data"] = False
-        st.rerun()
+
+
+def _apply_import(
+    canonical: pd.DataFrame, mode: str, filename: str, config: dict
+) -> None:
+    existing = st.session_state.get("imported_table")
+    if mode == "merge" and existing is not None and not existing.empty:
+        canonical = imported_data.merge_frames(existing, canonical)
+    dataset = imported_data.build_dataset(canonical, config)
+    directory = _import_temp_dir()
+    imported_data.materialize_agent_files(dataset, directory)
+    values = fresh_kpi_values(dataset.repl, None)
+    meta = dict(st.session_state.get("imported_meta") or {})
+    files = list(meta.get("files") or [])
+    if filename not in files:
+        files.append(filename)
+    st.session_state["imported_table"] = canonical.copy()
+    st.session_state["imported_meta"] = {
+        "filename": filename,
+        "files": files,
+        "mode": mode,
+        "imported_at": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"),
+        "rows": len(canonical),
+        "warnings": list(dataset.warnings),
+    }
+    st.session_state["imported_name_map"] = dataset.names
+    st.session_state["imported_signature"] = dataset.signature
+    st.session_state["imported_snapshot"] = dataset.snapshot
+    st.session_state["imported_agent_dir"] = str(directory)
+    st.session_state["imported_materialized_signature"] = dataset.signature
+    st.session_state["imported_prompt_facts"] = _imported_prompt_facts(dataset, values)
+    st.session_state["imported_store_cache"] = None
+    st.session_state["use_imported_data"] = True
+    st.session_state["import_file_nonce"] = (
+        int(st.session_state.get("import_file_nonce", 0) or 0) + 1
+    )
+
+
+def _clear_import() -> None:
+    for key in (
+        "imported_table",
+        "imported_meta",
+        "use_imported_data",
+        "imported_name_map",
+        "imported_signature",
+        "imported_snapshot",
+        "imported_agent_dir",
+        "imported_store_cache",
+        "imported_prompt_facts",
+        "imported_materialized_signature",
+    ):
+        st.session_state.pop(key, None)
+    directory = st.session_state.pop("imported_temp_dir", None)
+    if directory:
+        import shutil
+
+        shutil.rmtree(directory, ignore_errors=True)
+    st.session_state["import_file_nonce"] = (
+        int(st.session_state.get("import_file_nonce", 0) or 0) + 1
+    )
+    st.rerun()
 
 
 def _render_data_import() -> None:
-    with st.expander("📁 上传自有数据（支持 CSV / Excel）", expanded=False):
+    config = load_fresh_config()
+    rep_cfg = (config or {}).get("replenishment", {}) or {}
+    shelf_cfg = (config or {}).get("shelf_life", {}) or {}
+    default_lead = float(rep_cfg.get("lead_time_days", 1))
+    default_shelf = float(shelf_cfg.get("base_days", 5))
+    imported = st.session_state.get("imported_table")
+
+    with st.expander(
+        "📁 导入自有数据（完整接管 KPI / 表格 / 导出 / Agent）",
+        expanded=imported is None,
+    ):
         st.caption(
-            "至少需要 SKU、库存、销量三列；支持 CSV / XLSX，"
-            "自动识别常见中英文列名与带单位的表头。"
+            "必填：SKU（如 145-802）或 店号+商品号、库存、日均销量；"
+            "保质期、提前期缺失时用系统默认值。"
+            "可选：商品名称、P90 日销、销量标准差、临期数量、服务水平、"
+            "目标覆盖天数、最小订货量、包装倍数。"
         )
+        st.caption(
+            "导入后会按系统同一套库存口径重算 ROP_P90、目标水位、效期上限、"
+            "建议订货量和四档紧急度，并切换 KPI、补货清单、导出与补货 Agent。"
+        )
+        nonce = int(st.session_state.get("import_file_nonce", 0) or 0)
         uploaded = st.file_uploader(
-            "选择文件", type=["csv", "xlsx"], key="dashboard_import_file"
+            "选择文件",
+            type=["csv", "xlsx"],
+            key=f"dashboard_import_file_{nonce}",
         )
         if uploaded is not None:
             try:
-                raw_df = _read_uploaded_table(uploaded)
+                raw_df = imported_data.read_uploaded_table(uploaded)
             except Exception as exc:
                 st.error(f"文件读取失败：{exc}")
                 raw_df = None
@@ -2590,93 +2638,119 @@ def _render_data_import() -> None:
                     st.dataframe(
                         raw_df.head(5), use_container_width=True, hide_index=True
                     )
-                    mapping = _match_import_columns(raw_df)
-                    missing = [
-                        field
-                        for field in _IMPORT_REQUIRED_FIELDS
-                        if field not in mapping
+                    mapping = imported_data.match_columns(raw_df)
+                    missing = imported_data.inspect_columns(mapping)
+                    defaultable = [
+                        name for name in missing if name in ("保质期", "提前期")
+                    ]
+                    critical = [
+                        name for name in missing if name not in defaultable
                     ]
                     recognized = list(mapping.keys())
-                    if missing:
+                    if critical:
                         st.warning(
-                            "缺少必需列：" + "、".join(missing) + "。"
-                            "已识别列："
-                            + "、".join(recognized if recognized else ["无"])
+                            "缺少关键列：" + "、".join(critical) + "。已识别："
+                            + ("、".join(recognized) if recognized else "无")
                             + "。请检查表头命名。"
                         )
-                        if st.button("尝试部分导入", key="partial_import_button"):
-                            partial_df = _prepare_import_frame(raw_df, mapping)
-                            if partial_df.empty:
-                                st.error(
-                                    "没有可导入的完整行：已识别字段中存在空值。"
-                                )
-                            else:
-                                _store_import(
-                                    partial_df,
-                                    partial=True,
-                                    missing=missing,
-                                    filename=uploaded.name,
-                                )
-                                st.rerun()
                     else:
-                        st.success("列校验通过：SKU、库存、销量均已识别。")
-                        if st.button(
-                            "替换当前看板数据",
-                            type="primary",
-                            key="replace_data_button",
-                        ):
-                            full_df = _prepare_import_frame(raw_df, mapping)
-                            if full_df.empty:
-                                st.error(
-                                    "必需字段存在空值，没有可导入的完整行。"
-                                )
-                            else:
-                                _store_import(
-                                    full_df,
-                                    partial=False,
-                                    missing=[],
-                                    filename=uploaded.name,
-                                )
-                                st.rerun()
+                        if defaultable:
+                            st.warning(
+                                "缺少 " + "、".join(defaultable)
+                                + f"，将使用系统默认值：保质期 {default_shelf:g} 天、"
+                                f"提前期 {default_lead:g} 天。"
+                            )
+                        canonical, issues = imported_data.prepare_frame(
+                            raw_df, mapping, config
+                        )
+                        if canonical.empty:
+                            st.error(
+                                "没有可导入的完整行：请检查门店/商品号、库存、日均销量。"
+                            )
+                        else:
+                            st.success(
+                                f"字段校验通过：{len(canonical):,} 行可导入。"
+                            )
+                            for issue in issues:
+                                st.caption("· " + issue)
+                            st.dataframe(
+                                canonical.head(5),
+                                use_container_width=True,
+                                hide_index=True,
+                            )
+                            if st.button(
+                                "全量覆盖看板数据",
+                                type="primary",
+                                use_container_width=True,
+                                key="import_overwrite",
+                            ):
+                                try:
+                                    _apply_import(
+                                        canonical,
+                                        "overwrite",
+                                        uploaded.name,
+                                        config,
+                                    )
+                                except Exception as exc:
+                                    st.error(f"导入失败：{exc}")
+                                else:
+                                    st.rerun()
+                            if imported is not None and st.button(
+                                "增量合并到当前导入数据",
+                                use_container_width=True,
+                                key="import_merge",
+                            ):
+                                try:
+                                    _apply_import(
+                                        canonical,
+                                        "merge",
+                                        uploaded.name,
+                                        config,
+                                    )
+                                except Exception as exc:
+                                    st.error(f"导入失败：{exc}")
+                                else:
+                                    st.rerun()
 
-        imported = st.session_state.get("imported_table")
         if imported is not None:
-            meta = st.session_state.get("imported_meta", {})
+            meta = st.session_state.get("imported_meta") or {}
+            st.divider()
             st.success(
-                f"当前会话已载入自定义数据：{len(imported):,} 行"
-                + ("（部分导入）" if meta.get("partial") else "")
+                f"当前看板使用导入数据：{len(imported):,} 条序列"
+                + ("（增量合并）" if meta.get("mode") == "merge" else "（全量覆盖）")
             )
-            if meta.get("missing"):
+            if meta.get("files"):
                 st.caption(
-                    "缺失字段："
-                    + "、".join(meta["missing"])
-                    + "；这些列在导入数据中为空。"
+                    "来源文件：" + "、".join(meta["files"])
+                    + f" · 最近导入 {meta.get('imported_at', '')}"
                 )
-            if meta.get("filename"):
-                st.caption(
-                    f"来源文件：{meta['filename']} · {meta.get('imported_at', '')}"
-                )
+            for warning in meta.get("warnings") or []:
+                st.caption("· " + str(warning))
+            st.caption("仅当前浏览器会话有效；刷新为新会话后恢复演示数据。")
             st.dataframe(
                 imported.head(10), use_container_width=True, hide_index=True
             )
-            if st.button("清除导入数据", key="clear_imported_data"):
-                for key in (
-                    "imported_table",
-                    "imported_meta",
-                    "use_imported_data",
-                ):
-                    st.session_state.pop(key, None)
-                st.rerun()
+            if st.button("恢复演示数据", key="restore_demo_data"):
+                _clear_import()
+        else:
+            st.caption("当前为演示数据（FreshRetailNet-50K 系统快照）。")
 
 
 # ---------------------------------------------------------------------------
 # 决策溯源（功能 2）：表格下方 selectbox 选序列 + 三个 tab
 # 独立代码块，不改动上方表格、轮播图与顶栏；只读已加载的数据与 output 表。
 # ---------------------------------------------------------------------------
-def _trace_whatif_table(key: tuple[int, int]) -> None:
+def _trace_whatif_table(
+    key: tuple[int, int],
+    detail: pd.DataFrame | None = None,
+    summary: pd.DataFrame | None = None,
+    imported: bool = False,
+) -> None:
     """② 不照做会怎样：优先看这条序列的明细，缺失时退回全局汇总。"""
-    detail = load_csv(FRESH_WHATIF)
-    summary = load_csv(FRESH_WHATIF_SUMMARY)
+    if detail is None:
+        detail = load_csv(FRESH_WHATIF)
+    if summary is None:
+        summary = load_csv(FRESH_WHATIF_SUMMARY)
     labels: dict[float, str] = {}
     if summary is not None and not summary.empty:
         labels = {
@@ -2696,10 +2770,10 @@ def _trace_whatif_table(key: tuple[int, int]) -> None:
         if summary is None or summary.empty:
             return
         table = summary.copy()
-        source_note = "全部 200 条序列合计"
+        source_note = "全部导入序列合计" if imported else "全部 200 条序列合计"
     else:
         table = sub.copy()
-        source_note = f"仅 {product_names.sku_display(*key)} 这一条序列"
+        source_note = f"仅 {_display_sku(*key)} 这一条序列"
 
     table = table.sort_values("scenario_ratio")
     label_column = [
@@ -2738,13 +2812,24 @@ def _trace_whatif_table(key: tuple[int, int]) -> None:
             }
         )
 
-    st.caption(f"口径：{source_note}，7 天窗口，需求按实测回放；基线是「按建议」。")
+    if imported:
+        st.caption(
+            f"口径：{source_note}，7 天窗口，按日均销量平推；基线是「按建议」。"
+        )
+    else:
+        st.caption(f"口径：{source_note}，7 天窗口，需求按实测回放；基线是「按建议」。")
     st.dataframe(display, hide_index=True, use_container_width=True)
-    st.caption(
-        "两点如实说明：① 0.75 倍档的报损可能高于按建议档（批次轮换的次生效应），"
-        "不是必然单调；② 多订到 1.5 倍以上时缺货几乎不再下降、报损却大幅上升，"
-        "说明瓶颈在效期而不是订货量。"
-    )
+    if imported:
+        st.caption(
+            "导入数据为简化回放：首日到货后按日均销量平推 7 天，报损固定为 0。"
+            "它只用于演示“多订/少订”的方向，不等同于系统仿真的批次效期模型。"
+        )
+    else:
+        st.caption(
+            "两点如实说明：① 0.75 倍档的报损可能高于按建议档（批次轮换的次生效应），"
+            "不是必然单调；② 多订到 1.5 倍以上时缺货几乎不再下降、报损却大幅上升，"
+            "说明瓶颈在效期而不是订货量。"
+        )
 
 
 def _trace_alpha(shelf_life: int) -> None:
@@ -2801,8 +2886,11 @@ def render_trace_section(
     repl: pd.DataFrame,
     caps: dict[tuple[int, int], dict],
     config: dict,
+    imported: bool = False,
+    whatif_detail: pd.DataFrame | None = None,
+    whatif_summary: pd.DataFrame | None = None,
 ) -> None:
-    """表格下方的溯源区：选序列 -> 三个分页展示计算依据。"""
+    """表格下方的溯源区：选序列 -> 分页展示计算依据。"""
     if repl is None or repl.empty:
         return
 
@@ -2822,10 +2910,16 @@ def render_trace_section(
         unsafe_allow_html=True,
     )
     st.markdown("#### 决策溯源")
-    st.caption(
-        "选择一条序列：① 订货量怎么算出来的；② 不照做会怎样；"
-        "③ 安全库存分位凭什么定在这。"
-    )
+    if imported:
+        st.caption(
+            "选择一条序列：① 订货量怎么算出来的；"
+            "② 不照做会怎样（导入数据按日均销量简化回放）。"
+        )
+    else:
+        st.caption(
+            "选择一条序列：① 订货量怎么算出来的；② 不照做会怎样；"
+            "③ 安全库存分位凭什么定在这。"
+        )
 
     rows_by_key = {
         (int(row.store_id), int(row.product_id)): row for row in repl.itertuples()
@@ -2834,7 +2928,7 @@ def render_trace_section(
 
     def _label(key: tuple[int, int]) -> str:
         tier = str(getattr(rows_by_key[key], "urgency", ""))
-        label = product_names.sku_display(*key)
+        label = _display_sku(*key)
         return f"{label} · {tier}" if tier else label
 
     # 用选项指纹做 key，保留同一组选项下的选中状态。
@@ -2864,6 +2958,10 @@ def render_trace_section(
 
     record = rows_by_key[choice]
     key = (int(record.store_id), int(record.product_id))
+    row_lead = int(getattr(record, "lead_time_days", lead_time) or lead_time)
+    row_cover = int(getattr(record, "target_cover_days", cover_days) or cover_days)
+    row_pack = int(getattr(record, "order_pack_size", pack) or pack)
+    row_min = int(getattr(record, "min_order_qty", min_qty) or min_qty)
     row = {
         "store_id": key[0],
         "product_id": key[1],
@@ -2873,11 +2971,15 @@ def render_trace_section(
         "target_level": float(record.target_level),
         "suggest_qty": int(record.suggest_qty),
         "urgency": str(record.urgency),
+        "lead_time_days": row_lead,
+        "target_cover_days": row_cover,
+        "order_pack_size": row_pack,
+        "min_order_qty": row_min,
     }
     cap_info = caps.get(key)
 
     st.markdown(
-        f"**{product_names.sku_display(*key)}** · 建议订货 **{row['suggest_qty']:,}** 件"
+        f"**{_display_sku(*key)}** · 建议订货 **{row['suggest_qty']:,}** 件"
         f"（紧急度 {row['urgency']}）"
     )
     with st.expander("复制 SKU 深链接"):
@@ -2913,7 +3015,7 @@ def render_trace_section(
 
     if asked:
         question = (
-            f"{product_names.sku_display(*key)}：现有库存 {row['on_hand']:.2f}，"
+            f"{_display_sku(*key)}：现有库存 {row['on_hand']:.2f}，"
             f"ROP_P90 {row['rop_p90']:.2f}，效期修正目标 {target_eff:.2f}，"
             f"建议订货 {row['suggest_qty']}。请解释这个订货量是怎么定的，"
             "并说明不按建议执行的风险。"
@@ -2926,7 +3028,7 @@ def render_trace_section(
                         {"role": "system", "content": _system_prompt("freshretail")},
                         {"role": "user", "content": question},
                     ],
-                    get_fresh_store(),
+                    get_active_fresh_store(),
                     api_key,
                     echo=False,
                 )
@@ -2944,15 +3046,20 @@ def render_trace_section(
         with st.container(border=True):
             st.markdown("**AI 解读**")
             st.markdown(
-                product_names.localize_sku_text(cached_ai.get("answer", ""))
+                _localize_sku_text(cached_ai.get("answer", ""))
             )
             if cached_ai.get("tools"):
                 with st.expander("查看工具调用"):
                     _tool_call_markdown(cached_ai["tools"], localize=True)
 
-    tab_chain, tab_whatif, tab_alpha = st.tabs(
-        ["① 这个数怎么算的", "② 不照做会怎样", "③ 分位凭什么定在这"]
-    )
+    if imported:
+        tab_chain, tab_whatif = st.tabs(
+            ["① 这个数怎么算的", "② 不照做会怎样（导入数据简化回放）"]
+        )
+    else:
+        tab_chain, tab_whatif, tab_alpha = st.tabs(
+            ["① 这个数怎么算的", "② 不照做会怎样", "③ 分位凭什么定在这"]
+        )
 
     with tab_chain:
         if cap_info is None:
@@ -2962,8 +3069,8 @@ def render_trace_section(
                 row,
                 cap_info,
                 base_multiplier,
-                lead_time,
-                cover_days,
+                row_lead,
+                row_cover,
                 urgent_ratio,
             )
             for step in steps:
@@ -2974,8 +3081,8 @@ def render_trace_section(
                 row,
                 float(cap_info["sellable"]),
                 base_multiplier,
-                pack,
-                min_qty,
+                row_pack,
+                row_min,
             )
             base_ok = scheme["当前配置"]["qty"] == row["suggest_qty"]
             if not base_ok:
@@ -3014,10 +3121,16 @@ def render_trace_section(
                 )
 
     with tab_whatif:
-        _trace_whatif_table(key)
+        _trace_whatif_table(
+            key,
+            detail=whatif_detail if imported else None,
+            summary=whatif_summary if imported else None,
+            imported=imported,
+        )
 
-    with tab_alpha:
-        _trace_alpha(row["shelf_life_days"])
+    if not imported:
+        with tab_alpha:
+            _trace_alpha(row["shelf_life_days"])
 
 
 DECISION_ITEMS_PATH = OUTPUT_DIR / "decision_items.csv"
@@ -3191,6 +3304,12 @@ def render_order_panel(view: pd.DataFrame, snapshot: str) -> None:
         for row in view.itertuples()
         if int(row.suggest_qty) > 0
     }
+    for key in ("order_add_sku", "order_bulk_pick"):
+        value = st.session_state.get(key)
+        if isinstance(value, list):
+            st.session_state[key] = [item for item in value if item in rows_by_key]
+        elif value is not None and value not in rows_by_key:
+            st.session_state.pop(key, None)
     if not rows_by_key:
         st.info("当前筛选里没有建议订货量大于 0 的序列。")
         return
@@ -3218,7 +3337,7 @@ def render_order_panel(view: pd.DataFrame, snapshot: str) -> None:
         options=list(rows_by_key),
         index=None,
         format_func=lambda key: (
-            f"{product_names.sku_display(*key)} · "
+            f"{_display_sku(*key)} · "
             f"{rows_by_key[key].urgency} · 建议 {int(rows_by_key[key].suggest_qty)}"
         ),
         placeholder="选择一条序列",
@@ -3232,7 +3351,7 @@ def render_order_panel(view: pd.DataFrame, snapshot: str) -> None:
     ) and selected is not None:
         applied = add_to_cart(selected, rows_by_key[selected])
         st.session_state["order_cart"] = cart
-        st.toast(f"已加入 {product_names.sku_display(*selected)}：{applied} 件")
+        st.toast(f"已加入 {_display_sku(*selected)}：{applied} 件")
         st.rerun()
 
     bulk_pick_col, bulk_add_col = st.columns([3.2, 1.0])
@@ -3240,7 +3359,7 @@ def render_order_panel(view: pd.DataFrame, snapshot: str) -> None:
         "批量选择商品（可多选）",
         options=list(rows_by_key),
         format_func=lambda key: (
-            f"{product_names.sku_display(*key)} · "
+            f"{_display_sku(*key)} · "
             f"{rows_by_key[key].urgency}"
         ),
         placeholder="选择多条序列，再点批量加入",
@@ -3283,7 +3402,7 @@ def render_order_panel(view: pd.DataFrame, snapshot: str) -> None:
     if cart:
         cart_rows = [
             {
-                "商品（门店-编号）": product_names.sku_display(
+                "商品（门店-编号）": _display_sku(
                     int(item["store_id"]), int(item["product_id"])
                 ),
                 "建议量": int(item["suggest_qty"]),
@@ -3302,7 +3421,7 @@ def render_order_panel(view: pd.DataFrame, snapshot: str) -> None:
             "移除一项",
             options=cart_keys,
             index=None,
-            format_func=lambda name: product_names.sku_display(
+            format_func=lambda name: _display_sku(
                 *[int(part) for part in name.split("-")]
             ),
             placeholder="选择要移除的商品",
@@ -3802,13 +3921,14 @@ def _cached_reports(
     snapshot: str,
     values: dict,
     filter_note: str,
+    source_note: str | None = None,
 ) -> tuple[bytes, bytes | None]:
     excel = report_export.build_excel_report(
-        display, repl, snapshot, values, filter_note
+        display, repl, snapshot, values, filter_note, source_note
     )
     try:
         pdf = report_export.build_pdf_report(
-            display, repl, snapshot, values, filter_note
+            display, repl, snapshot, values, filter_note, source_note
         )
     except Exception:
         pdf = None
@@ -3822,16 +3942,27 @@ def render_fresh_replenishment(
     config: dict,
     snapshot: str,
     values: dict,
+    imported_meta: dict | None = None,
+    whatif_detail: pd.DataFrame | None = None,
+    whatif_summary: pd.DataFrame | None = None,
 ) -> None:
     st.markdown("### 库存健康与补货清单")
-    imported = st.session_state.get("imported_table")
-    if imported is not None and st.session_state.get("use_imported_data"):
-        _render_imported_inventory(imported)
-        _render_data_import()
-        return
-    st.caption(
-        f"共 {len(repl):,} 条序列；库存、订货与紧急度来自补货快照 {snapshot}，页面不重算。"
-    )
+    imported = imported_meta is not None
+    if imported:
+        st.markdown(
+            '<div class="import-banner"><span class="import-dot"></span>'
+            f"当前看板使用自定义导入数据 · {len(repl):,} 条序列"
+            '<span class="import-hint">KPI / 表格 / 导出 / Agent 均已切换 · 底部可恢复演示数据</span></div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            f"共 {len(repl):,} 条导入序列；ROP_P90、目标水位、效期上限、"
+            "建议订货量与紧急度均按导入数据实时计算。"
+        )
+    else:
+        st.caption(
+            f"共 {len(repl):,} 条序列；库存、订货与紧急度来自补货快照 {snapshot}，页面不重算。"
+        )
 
     rep_cfg = (config or {}).get("replenishment", {}) or {}
     exp_threshold = int(rep_cfg.get("expiring_threshold_days", 1))
@@ -3849,6 +3980,8 @@ def render_fresh_replenishment(
     if shared_store not in store_options:
         shared_store = 0
     st.session_state.setdefault("fresh_store_filter", shared_store)
+    if st.session_state.get("fresh_store_filter") not in [0, *store_options]:
+        st.session_state["fresh_store_filter"] = 0
     store_sel = f_store.selectbox(
         "门店",
         options=[0, *store_options],
@@ -3861,6 +3994,11 @@ def render_fresh_replenishment(
         item for item in _query_value("urgency").split(",") if item in URGENCY_RANK
     ]
     st.session_state.setdefault("fresh_urgency_filter_v2", shared_urgency)
+    st.session_state["fresh_urgency_filter_v2"] = [
+        item
+        for item in (st.session_state.get("fresh_urgency_filter_v2") or [])
+        if item in urgency_options
+    ]
     urgency_sel = f1.multiselect(
         "紧急度（多选）",
         options=urgency_options,
@@ -3878,6 +4016,11 @@ def render_fresh_replenishment(
         if value in shelf_options and value not in shared_shelf:
             shared_shelf.append(value)
     st.session_state.setdefault("fresh_shelf_filter_v2", shared_shelf)
+    st.session_state["fresh_shelf_filter_v2"] = [
+        int(item)
+        for item in (st.session_state.get("fresh_shelf_filter_v2") or [])
+        if int(item) in shelf_options
+    ]
     shelf_sel = f2.multiselect(
         "保质期档",
         options=shelf_options,
@@ -3893,8 +4036,8 @@ def render_fresh_replenishment(
     expiring_only = f3.checkbox("临期仅看", key="fresh_expiring_only")
     st.session_state.setdefault("fresh_sku_search", _query_value("q"))
     search_raw = f4.text_input(
-        "按 SKU 搜索",
-        placeholder="例如 145-802",
+        "按品名 / SKU 搜索",
+        placeholder="例如 五花肉 或 145-802",
         key="fresh_sku_search",
     )
 
@@ -3954,7 +4097,7 @@ def render_fresh_replenishment(
         )
         names = view.assign(
             _name=[
-                product_names.product_name(s, p)
+                _display_name(s, p)
                 for s, p in zip(view["store_id"], view["product_id"])
             ]
         )["_name"]
@@ -4001,7 +4144,7 @@ def render_fresh_replenishment(
         expiring = float(row.expiring_qty)
         records.append(
             {
-                "商品（门店-编号）": product_names.sku_display(
+                "商品（门店-编号）": _display_sku(
                     row.store_id, row.product_id
                 ),
                 f"现有库存（{FRESH_UNIT}）": round(float(row.on_hand), 2),
@@ -4152,7 +4295,17 @@ def render_fresh_replenishment(
     if st.session_state.get("fresh_report_ready"):
         with st.spinner("正在生成日报..."):
             excel_bytes, pdf_bytes = _cached_reports(
-                display, repl, snapshot, values, filter_note
+                display,
+                repl,
+                snapshot,
+                values,
+                filter_note,
+                source_note=(
+                    "数据来源：用户导入数据（当前浏览器会话）；"
+                    "本报告按导入数据实时计算生成。"
+                    if imported
+                    else None
+                ),
             )
         report_left, report_right = st.columns(2)
         with report_left:
@@ -4181,7 +4334,14 @@ def render_fresh_replenishment(
                 st.caption("PDF 生成暂不可用")
         st.caption("筛选条件变化后需要重新生成日报。")
 
-    render_trace_section(repl, caps, config)
+    render_trace_section(
+        repl,
+        caps,
+        config,
+        imported=imported,
+        whatif_detail=whatif_detail,
+        whatif_summary=whatif_summary,
+    )
     render_order_panel(view, snapshot)
     _render_data_import()
     _render_cap_sweep(cap_sweep, config, repl)
@@ -4370,11 +4530,13 @@ def render_fresh_detail(
         (int(s), int(p))
         for s, p in zip(ranked["store_id"], ranked["product_id"])
     ]
+    if st.session_state.get("fresh_detail_series") not in keys:
+        st.session_state.pop("fresh_detail_series", None)
     selected = st.selectbox(
         "选择商品（门店-编号）",
         options=keys,
         index=0,
-        format_func=lambda key: product_names.sku_display(key[0], key[1]),
+        format_func=lambda key: _display_sku(key[0], key[1]),
         key="fresh_detail_series",
     )
 
@@ -4459,7 +4621,7 @@ def render_fresh_detail(
     st.markdown(
         f"""
         <div class="reco-card">
-          <div class="reco-label">今天的补货建议 · {html.escape(product_names.sku_display(*selected))}</div>
+          <div class="reco-label">今天的补货建议 · {html.escape(_display_sku(*selected))}</div>
           <div class="reco-value">{int(row['suggest_qty']):,}<span class="reco-unit">{FRESH_UNIT}</span></div>
           <span class="badge {badge_class(urgency)}">{html.escape(urgency)}</span>
           <div class="reco-reason">{html.escape(advice)}</div>
@@ -4484,15 +4646,23 @@ def render_fresh_detail(
                 f"{float(s['total_sale']):,.2f} {FRESH_UNIT}，日变异系数 {float(s['cv']):.3f}。"
             )
 
+    imported_mode = bool(st.session_state.get("use_imported_data"))
+    source_label = "用户导入数据" if imported_mode else "补货快照"
     if group is not None and not group.empty:
         dmin = group["dt"].min().strftime("%Y-%m-%d")
         dmax = group["dt"].max().strftime("%Y-%m-%d")
+        forecast_label = (
+            "7 天预测（按日均销量平推）"
+            if imported_mode
+            else "7 天预测表"
+        )
         st.caption(
-            f"数据来源：补货快照 {snapshot}（库存 / 订货）；7 天预测表 {dmin} ~ {dmax}"
-            f"（P50 / P90 / 实测）。效期上限 = 保质期内预计可售量 × 配置倍数 {multiplier:.2f}。"
+            f"数据来源：{source_label} {snapshot}（库存 / 订货）；{forecast_label} "
+            f"{dmin} ~ {dmax}（P50 / P90 / 实测）。"
+            f"效期上限 = 保质期内预计可售量 × 配置倍数 {multiplier:.2f}。"
         )
     else:
-        st.caption(f"数据来源：补货快照 {snapshot}。")
+        st.caption(f"数据来源：{source_label} {snapshot}。")
 
 
 # ---------------------------------------------------------------------------
@@ -4881,7 +5051,7 @@ def _tool_call_markdown(tools: list[dict], localize: bool = False) -> None:
         ):
             st.caption(
                 "商品："
-                + product_names.sku_display(args["store_id"], args["product_id"])
+                + _display_sku(args["store_id"], args["product_id"])
             )
         st.code(
             json.dumps(args, ensure_ascii=False, indent=2),
@@ -4890,7 +5060,7 @@ def _tool_call_markdown(tools: list[dict], localize: bool = False) -> None:
         if call.get("summary"):
             summary = str(call["summary"])
             st.caption(
-                product_names.localize_sku_text(summary) if localize else summary
+                _localize_sku_text(summary) if localize else summary
             )
 
 
@@ -4968,7 +5138,7 @@ def _render_chat_history(
         with st.chat_message(role):
             content = str(message.get("content", ""))
             st.markdown(
-                product_names.localize_sku_text(content) if localize else content
+                _localize_sku_text(content) if localize else content
             )
             if role == "user" and message.get("note"):
                 st.caption(message["note"])
@@ -5514,7 +5684,7 @@ def render_notification_center(
         else:
             for row in urgent.head(5).itertuples():
                 st.markdown(
-                    f"- **{product_names.sku_display(row.store_id, row.product_id)}** · "
+                    f"- **{_display_sku(row.store_id, row.product_id)}** · "
                     f"在库 {float(row.on_hand):.2f} · 建议 {int(row.suggest_qty)} 件"
                 )
         st.markdown(f"**临期**（{len(expiring)} 条）")
@@ -5523,7 +5693,7 @@ def render_notification_center(
         else:
             for row in expiring.head(5).itertuples():
                 st.markdown(
-                    f"- **{product_names.sku_display(row.store_id, row.product_id)}** · "
+                    f"- **{_display_sku(row.store_id, row.product_id)}** · "
                     f"临期 {float(row.expiring_qty):.2f} {FRESH_UNIT}"
                 )
         st.caption("仅页面内提醒；未接入企业微信/钉钉推送。")
@@ -5627,8 +5797,9 @@ def build_daily_brief(repl: pd.DataFrame | None, snapshot: str) -> str:
         else "临期这块今天空的"
     )
     tail = f"其余 {suggest_n} 条建议补货、{plan_n} 条计划补货按表排"
+    source = "导入数据" if st.session_state.get("use_imported_data") else "补货快照"
     return (
-        f"店长早，补货快照 {snapshot}：{head}；{expiry}；{tail}，"
+        f"店长早，{source} {snapshot}：{head}；{expiry}；{tail}，"
         "拿不准的随时问我。"
     )
 
@@ -5660,43 +5831,51 @@ def render_data_status(
     forecast: pd.DataFrame | None,
     config: dict,
     snapshot: str,
+    imported: bool = False,
+    imported_meta: dict | None = None,
 ) -> None:
     """KPI 下方一行小字：数据截止日、快照文件生成时间与序列齐全性。"""
     if repl is None or repl.empty:
         return
 
-    paths = [OUTPUT_DIR / FRESH_REPL, OUTPUT_DIR / FRESH_FORECAST]
-    stamps = [path.stat().st_mtime for path in paths if path.exists()]
-    updated = (
-        pd.Timestamp.fromtimestamp(max(stamps)).strftime("%m-%d %H:%M")
-        if stamps
-        else "未知"
-    )
-
-    expected = int(
-        ((config or {}).get("validation", {}) or {}).get(
-            "expected_series", len(repl)
-        )
-    )
-    series_ok = len(repl) == expected
-    forecast_ok = True
-    if (
-        forecast is not None
-        and not forecast.empty
-        and {"store_id", "product_id"} <= set(forecast.columns)
-    ):
-        forecast_ok = (
-            forecast[["store_id", "product_id"]].drop_duplicates().shape[0] == expected
-        )
-
-    if series_ok and forecast_ok:
-        detail = f"{len(repl):,} 条序列校验通过"
-    elif not series_ok:
-        detail = f"序列数异常（{len(repl):,} / 期望 {expected:,}）"
+    if imported:
+        meta = imported_meta or {}
+        updated = str(meta.get("imported_at") or "自定义导入")
+        detail = f"{len(repl):,} 条导入序列"
+        warn_class = ""
+        stamp_label = "导入时间"
     else:
-        detail = "预测表序列数与补货快照不一致"
+        paths = [OUTPUT_DIR / FRESH_REPL, OUTPUT_DIR / FRESH_FORECAST]
+        stamps = [path.stat().st_mtime for path in paths if path.exists()]
+        updated = (
+            pd.Timestamp.fromtimestamp(max(stamps)).strftime("%m-%d %H:%M")
+            if stamps
+            else "未知"
+        )
+        expected = int(
+            ((config or {}).get("validation", {}) or {}).get(
+                "expected_series", len(repl)
+            )
+        )
+        series_ok = len(repl) == expected
+        forecast_ok = True
+        if (
+            forecast is not None
+            and not forecast.empty
+            and {"store_id", "product_id"} <= set(forecast.columns)
+        ):
+            forecast_ok = (
+                forecast[["store_id", "product_id"]].drop_duplicates().shape[0] == expected
+            )
+        if series_ok and forecast_ok:
+            detail = f"{len(repl):,} 条序列校验通过"
+        elif not series_ok:
+            detail = f"序列数异常（{len(repl):,} / 期望 {expected:,}）"
+        else:
+            detail = "预测表序列数与补货快照不一致"
+        warn_class = "" if series_ok and forecast_ok else " warn"
+        stamp_label = "快照生成"
 
-    warn_class = "" if series_ok and forecast_ok else " warn"
     refreshed = st.session_state.get("fresh_data_refreshed_at")
     refresh_note = (
         f" · 页面刷新 {html.escape(str(refreshed))}" if refreshed else ""
@@ -5706,7 +5885,7 @@ def render_data_status(
         '<span class="data-status-chip">'
         '<span class="dot"></span>'
         f"<span>数据截至 <b>{html.escape(str(snapshot))}</b>"
-        f" · 快照生成 {html.escape(updated)}"
+        f" · {stamp_label} {html.escape(updated)}"
         f"{refresh_note}"
         f" · {html.escape(detail)}</span>"
         "</span></div>",
@@ -5781,39 +5960,94 @@ def _inject_nav_scrollspy() -> None:
 
 
 def main_fresh() -> None:
-    repl = load_csv(FRESH_REPL)
-    forecast = load_csv(FRESH_FORECAST)
-    comparison = load_csv(FRESH_COMPARISON)
-    cap_sweep = load_csv(FRESH_CAP_SWEEP)
-    metrics = load_csv(FRESH_METRICS)
     config = load_fresh_config()
-    snapshot = fresh_snapshot_date(forecast, config)
-    if repl is not None and not repl.empty:
-        values = fresh_kpi_values(repl, comparison)
+    imported_raw = st.session_state.get("imported_table")
+    imported_dataset = None
+    imported_meta = None
+    whatif_detail = None
+    whatif_summary = None
+    summary = None
+    if imported_raw is not None and st.session_state.get("use_imported_data"):
+        try:
+            imported_dataset = imported_data.build_dataset(
+                imported_raw,
+                config,
+                snapshot=st.session_state.get("imported_snapshot"),
+            )
+        except Exception as exc:
+            st.error(f"导入数据计算失败：{exc}")
+            imported_dataset = None
+
+    if imported_dataset is not None:
+        repl = imported_dataset.repl
+        forecast = imported_dataset.forecast
+        comparison = None
+        cap_sweep = None
+        metrics = None
+        snapshot = imported_dataset.snapshot
+        caps = imported_dataset.caps
+        whatif_detail = imported_dataset.what_if_detail
+        whatif_summary = imported_dataset.what_if_summary
+        imported_meta = st.session_state.get("imported_meta") or {}
+        directory = _import_temp_dir()
+        if st.session_state.get("imported_materialized_signature") != imported_dataset.signature:
+            imported_data.materialize_agent_files(imported_dataset, directory)
+            st.session_state["imported_materialized_signature"] = (
+                imported_dataset.signature
+            )
+        st.session_state["imported_name_map"] = imported_dataset.names
+        st.session_state["imported_signature"] = imported_dataset.signature
+        st.session_state["imported_snapshot"] = imported_dataset.snapshot
+        st.session_state["imported_agent_dir"] = str(directory)
+        values = fresh_kpi_values(repl, None)
+        values["imported"] = True
+        values["daily_total"] = float(repl["daily_mean"].sum())
+        values["store_count"] = int(repl["store_id"].nunique())
+        if not st.session_state.get("imported_prompt_facts"):
+            st.session_state["imported_prompt_facts"] = _imported_prompt_facts(
+                imported_dataset, values
+            )
         suggest_total = int(
             pd.to_numeric(repl["suggest_qty"], errors="coerce").fillna(0).sum()
         )
     else:
-        values = {
-            "series": 0,
-            "urgent": 0,
-            "advised": 0,
-            "expiring_qty": 0.0,
-            "expiring_series": 0,
-            "short_shelf": None,
-            "spoilage_c": None,
-            "spoilage_b": None,
-        }
-        suggest_total = 0
+        repl = load_csv(FRESH_REPL)
+        forecast = load_csv(FRESH_FORECAST)
+        comparison = load_csv(FRESH_COMPARISON)
+        cap_sweep = load_csv(FRESH_CAP_SWEEP)
+        metrics = load_csv(FRESH_METRICS)
+        snapshot = fresh_snapshot_date(forecast, config)
+        if repl is not None and not repl.empty:
+            values = fresh_kpi_values(repl, comparison)
+            suggest_total = int(
+                pd.to_numeric(repl["suggest_qty"], errors="coerce").fillna(0).sum()
+            )
+        else:
+            values = {
+                "series": 0,
+                "urgent": 0,
+                "advised": 0,
+                "expiring_qty": 0.0,
+                "expiring_series": 0,
+                "short_shelf": None,
+                "spoilage_c": None,
+                "spoilage_b": None,
+            }
+            suggest_total = 0
 
     render_top_navbar(snapshot)
     render_notification_center(repl, config, snapshot)
     # 今日简报：页顶晨会播报，数字来自本次已加载的补货表。
     render_daily_brief(repl, snapshot)
+    if imported_meta is None:
+        st.caption(
+            "当前为演示数据；页面下方「导入自有数据」可完整接管 "
+            "KPI / 补货清单 / 导出 / 补货 Agent。"
+        )
     components.html(
         _fresh_hero_carousel_html(
             snapshot,
-            "FreshRetailNet-50K（品类已脱敏）",
+            "用户导入数据" if imported_meta else "FreshRetailNet-50K（品类已脱敏）",
             int(values["urgent"]),
             int(values["expiring_series"]),
             suggest_total,
@@ -5827,12 +6061,22 @@ def main_fresh() -> None:
             "app/freshretail_inventory.py 生成 freshretail_inventory_replenishment.csv。"
         )
     else:
-        caps = compute_expiry_caps(repl, forecast, config)
+        if not imported_meta:
+            caps = compute_expiry_caps(repl, forecast, config)
         log_fresh_kpi(values, snapshot)
-        render_fresh_kpi(values, snapshot, metrics)
+        render_fresh_kpi(
+            values, snapshot, metrics, imported=imported_meta is not None
+        )
         status_col, refresh_col, _data_spacer = st.columns([6.0, 0.5, 0.5])
         with status_col:
-            render_data_status(repl, forecast, config, snapshot)
+            render_data_status(
+                repl,
+                forecast,
+                config,
+                snapshot,
+                imported=imported_meta is not None,
+                imported_meta=imported_meta,
+            )
         with refresh_col:
             st.markdown(
                 '<span class="data-refresh-anchor"></span>',
@@ -5848,6 +6092,8 @@ def main_fresh() -> None:
                 load_fresh_config.clear()
                 get_fresh_store.clear()
                 get_dataco_store.clear()
+                st.session_state["imported_store_cache"] = None
+                st.session_state.pop("imported_materialized_signature", None)
                 st.session_state.pop("fresh_kpi_logged", None)
                 st.session_state["fresh_data_refreshed_at"] = (
                     pd.Timestamp.now().strftime("%H:%M:%S")
@@ -5857,13 +6103,22 @@ def main_fresh() -> None:
         st.divider()
         st.markdown('<div id="section-inventory"></div>', unsafe_allow_html=True)
         render_fresh_replenishment(
-            repl, caps, cap_sweep, config, snapshot, values
+            repl,
+            caps,
+            cap_sweep,
+            config,
+            snapshot,
+            values,
+            imported_meta=imported_meta,
+            whatif_detail=whatif_detail,
+            whatif_summary=whatif_summary,
         )
         _scroll_to_deep_link_once()
         st.divider()
         st.markdown('<div id="section-forecast"></div>', unsafe_allow_html=True)
         # 5.4MB 汇总表只在预测详情区需要，放到这里加载，避免拖慢首屏。
-        summary = load_csv(FRESH_SUMMARY)
+        if not imported_meta:
+            summary = load_csv(FRESH_SUMMARY)
         render_fresh_detail(repl, forecast, summary, config, caps, snapshot)
 
     st.caption("注：销量单位已作展示化处理，底层为归一化销量指数")
@@ -5872,12 +6127,16 @@ def main_fresh() -> None:
     api_key = get_agent().load_api_key()
     render_chat(
         api_key,
-        get_fresh_store,
+        get_active_fresh_store,
         dataset="freshretail",
         state_key="fresh",
         quick_questions=FRESH_QUICK_QUESTIONS,
         placeholder="问生鲜补货问题，例如：黑猪五花肉（145-802）该补多少？",
-        source_note=f"数据来源：补货快照 {snapshot}",
+        source_note=(
+            f"数据来源：用户导入数据 · {snapshot}"
+            if imported_meta
+            else f"数据来源：补货快照 {snapshot}"
+        ),
     )
     _inject_nav_scrollspy()
 
@@ -6439,7 +6698,7 @@ def render_global_ai(dataset: str) -> None:
                 with st.chat_message(message["role"]):
                     content = str(message["content"])
                     st.markdown(
-                        product_names.localize_sku_text(content)
+                        _localize_sku_text(content)
                         if localize
                         else content
                     )
@@ -6472,7 +6731,7 @@ def render_global_ai(dataset: str) -> None:
                 ]
                 messages.append({"role": "user", "content": prompt.strip()})
                 store = (
-                    get_fresh_store()
+                    get_active_fresh_store()
                     if dataset == "freshretail"
                     else get_dataco_store()
                 )

@@ -13,6 +13,9 @@ from __future__ import annotations
 
 import re
 
+# 供看板热更新检查；模块接口变化时递增，强制重载旧进程里的缓存。
+PRODUCT_NAMES_VERSION = 3
+
 # product_id → 具体生鲜品名。补货快照里出现的 50 个 product_id 已全覆盖。
 PRODUCT_NAMES_BY_ID: dict[int, str] = {
     4: "红富士苹果",
@@ -150,23 +153,69 @@ _SKU_THEN_NAME_RE = re.compile(
 )
 
 
-def localize_sku_text(text: object) -> str:
-    """把 “SKU 145-802” 统一换成 “黑猪五花肉（145-802）”。"""
+def _display_label(
+    store_id: object,
+    product_id: object,
+    extra_names: dict[tuple[int, int], str] | None = None,
+) -> str:
+    store = _as_int(store_id)
+    pid = _as_int(product_id)
+    if store is None or pid is None:
+        return f"{product_name(store_id, product_id)}（{store_id}-{product_id}）"
+    if extra_names:
+        name = extra_names.get((store, pid))
+        if name:
+            return f"{name}（{store}-{pid}）"
+    return sku_display(store, pid)
+
+
+def localize_sku_text(
+    text: object, extra_names: dict[tuple[int, int], str] | None = None
+) -> str:
+    """把 “SKU 145-802” 统一换成 “黑猪五花肉（145-802）”。
+
+    extra_names 用于用户导入数据：{(store_id, product_id): 品名}。
+    """
     value = str(text or "")
     if not value:
         return ""
 
+    if extra_names and len(extra_names) <= 500:
+        extra_values = sorted(
+            {str(v).strip() for v in extra_names.values() if str(v).strip()},
+            key=len,
+            reverse=True,
+        )
+        name_alt = "|".join(re.escape(name) for name in extra_values)
+        if name_alt:
+            name_alt = name_alt + "|" + _NAME_ALT
+        else:
+            name_alt = _NAME_ALT
+        name_then_re = re.compile(
+            rf"(?P<name>{name_alt})\s*[（(]?\s*SKU\s*"
+            rf"(?P<store>\d{{1,5}})\s*-\s*(?P<pid>\d{{1,5}})\s*[）)]?",
+            re.IGNORECASE,
+        )
+        sku_then_re = re.compile(
+            rf"SKU\s*(?P<store>\d{{1,5}})\s*-\s*(?P<pid>\d{{1,5}})\s*"
+            rf"[（(]\s*(?P<name>{name_alt})\s*[）)]",
+            re.IGNORECASE,
+        )
+    else:
+        name_then_re = _NAME_THEN_SKU_RE
+        sku_then_re = _SKU_THEN_NAME_RE
+
     def _name_then_sku(match: "re.Match[str]") -> str:
-        return sku_display(match.group("store"), match.group("pid"))
+        return _display_label(match.group("store"), match.group("pid"), extra_names)
 
     def _sku_then_name(match: "re.Match[str]") -> str:
-        return sku_display(match.group("store"), match.group("pid"))
+        return _display_label(match.group("store"), match.group("pid"), extra_names)
 
     def _bare_sku(match: "re.Match[str]") -> str:
-        return sku_display(match.group(1), match.group(2))
+        return _display_label(match.group(1), match.group(2), extra_names)
 
-    value = _SKU_THEN_NAME_RE.sub(_sku_then_name, value)
-    value = _NAME_THEN_SKU_RE.sub(_name_then_sku, value)
+    value = sku_then_re.sub(_sku_then_name, value)
+    value = name_then_re.sub(_name_then_sku, value)
     return _SKU_TOKEN_RE.sub(_bare_sku, value)
 
 
@@ -182,25 +231,48 @@ def product_name_by_label(label: str) -> str:
     return text or INVALID_PRODUCT_NAME
 
 
-def agent_prompt_block() -> str:
-    """给 Agent 的系统提示词：具体品名 → product_id 映射与解析纪律。"""
-    lines = [
-        "【商品名称 → product_id 映射（演示用真实品名）】",
-        "界面和对话里使用下列具体生鲜品名，不再使用「生鲜商品」等占位名。",
-        "用户说品名时，先按本表换算成 product_id；门店号（store_id）必须来自"
-        "用户原话或上下文，不能猜。查询时把 store_id 和 product_id 一起传给工具。",
-    ]
-    for pid, name in sorted(PRODUCT_NAMES_BY_ID.items()):
-        lines.append(f"- {name} = product_id {pid}")
-    lines.append(
-        "用户只说品名、没说门店时，先说明该品名对应 product_id，并请用户补充门店"
-        "（例如「黑猪五花肉（145-802）」中的 145 就是门店号），不要默认门店。"
-    )
-    lines.append(
-        "数据中未列在上面的编号，界面会从真实品名池分配一个具体名字；"
-        "如果你无法确定用户说的品名对应哪个 product_id，请让用户提供完整 SKU"
-        "（店号-商品号），不要编造映射或库存数字。"
-    )
+def agent_prompt_block(
+    extra_names: dict[tuple[int, int], str] | None = None,
+) -> str:
+    """给 Agent 的系统提示词：具体品名 → 门店/商品号映射与解析纪律。"""
+    if extra_names:
+        lines = [
+            "【商品名称 → 门店/商品号映射（当前看板：用户导入数据）】",
+            "当前看板使用用户导入的数据；下列是本次可查询的商品：",
+        ]
+        items = sorted(extra_names.items())
+        for (store, pid), name in items[:200]:
+            lines.append(
+                f"- {name}（{store}-{pid}） = store_id {store}, product_id {pid}"
+            )
+        if len(items) > 200:
+            lines.append(
+                f"- 其余 {len(items) - 200} 个商品未逐条列出；"
+                "这些商品请用工具返回的 store_id / product_id 查询，"
+                "回答时仍用「品名（店号-商品号）」。"
+            )
+        lines.append(
+            "用户说品名时按上表定位 store_id 和 product_id；门店号不能猜。"
+            "不在上表中的品名，说明当前导入数据里没有，不要硬套或编造。"
+        )
+    else:
+        lines = [
+            "【商品名称 → product_id 映射（演示用真实品名）】",
+            "界面和对话里使用下列具体生鲜品名，不再使用「生鲜商品」等占位名。",
+            "用户说品名时，先按本表换算成 product_id；门店号（store_id）必须来自"
+            "用户原话或上下文，不能猜。查询时把 store_id 和 product_id 一起传给工具。",
+        ]
+        for pid, name in sorted(PRODUCT_NAMES_BY_ID.items()):
+            lines.append(f"- {name} = product_id {pid}")
+        lines.append(
+            "用户只说品名、没说门店时，先说明该品名对应 product_id，并请用户补充门店"
+            "（例如「黑猪五花肉（145-802）」中的 145 就是门店号），不要默认门店。"
+        )
+        lines.append(
+            "数据中未列在上面的编号，界面会从真实品名池分配一个具体名字；"
+            "如果你无法确定用户说的品名对应哪个 product_id，请让用户提供完整 SKU"
+            "（店号-商品号），不要编造映射或库存数字。"
+        )
     lines.append(
         "回答时一律用「具体品名（店号-商品号）」指代商品，"
         "例如：黑猪五花肉（145-802）建议补货 13 件。"
