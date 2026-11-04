@@ -737,6 +737,21 @@ div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > 
   box-shadow: 0 6px 16px rgba(3, 13, 28, 0.45) !important;
   background: linear-gradient(135deg, #2479c4, #5fb0f0) !important;
 }
+/* Streamlit 1.30 的 help tooltip 外层会撑满整行，导致铃铛/头像互相遮挡点击。
+   把顶栏固定按钮的按钮、tooltip 容器都锁在 34×34。 */
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .nav-auth-anchor) div[data-testid="stButton"],
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .notif-bell-anchor) div[data-testid="stButton"],
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .nav-auth-anchor) > div[data-testid="element-container"],
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .notif-bell-anchor) > div[data-testid="element-container"],
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .nav-auth-anchor) [data-testid="tooltipHoverTarget"],
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .notif-bell-anchor) [data-testid="tooltipHoverTarget"],
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .nav-auth-anchor) [data-testid="stTooltipIcon"],
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .notif-bell-anchor) [data-testid="stTooltipIcon"] {
+  width: 34px !important;
+  max-width: 34px !important;
+  min-width: 34px !important;
+  flex: 0 0 34px !important;
+}
 div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .auth-panel-anchor) {
   position: fixed !important;
   top: 68px;
