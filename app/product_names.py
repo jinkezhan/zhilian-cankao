@@ -11,6 +11,8 @@
 
 from __future__ import annotations
 
+import re
+
 # product_id → 具体生鲜品名。补货快照里出现的 50 个 product_id 已全覆盖。
 PRODUCT_NAMES_BY_ID: dict[int, str] = {
     4: "红富士苹果",
@@ -130,6 +132,44 @@ def sku_display(store_id: object, product_id: object) -> str:
     return f"{name}（{store}-{pid}）"
 
 
+# 回复文本里的 SKU 编号本地化：把 “SKU 145-802” 统一改写成
+# “黑猪五花肉（145-802）”，保证 AI 问答区不再出现裸 SKU。
+_NAME_ALT = "|".join(
+    re.escape(name) for name in sorted(set(NAME_POOL), key=len, reverse=True)
+)
+_SKU_TOKEN_RE = re.compile(r"SKU\s*(\d{1,5})\s*-\s*(\d{1,5})", re.IGNORECASE)
+_NAME_THEN_SKU_RE = re.compile(
+    rf"(?P<name>{_NAME_ALT})\s*[（(]?\s*SKU\s*"
+    rf"(?P<store>\d{{1,5}})\s*-\s*(?P<pid>\d{{1,5}})\s*[）)]?",
+    re.IGNORECASE,
+)
+_SKU_THEN_NAME_RE = re.compile(
+    rf"SKU\s*(?P<store>\d{{1,5}})\s*-\s*(?P<pid>\d{{1,5}})\s*"
+    rf"[（(]\s*(?P<name>{_NAME_ALT})\s*[）)]",
+    re.IGNORECASE,
+)
+
+
+def localize_sku_text(text: object) -> str:
+    """把 “SKU 145-802” 统一换成 “黑猪五花肉（145-802）”。"""
+    value = str(text or "")
+    if not value:
+        return ""
+
+    def _name_then_sku(match: "re.Match[str]") -> str:
+        return sku_display(match.group("store"), match.group("pid"))
+
+    def _sku_then_name(match: "re.Match[str]") -> str:
+        return sku_display(match.group("store"), match.group("pid"))
+
+    def _bare_sku(match: "re.Match[str]") -> str:
+        return sku_display(match.group(1), match.group(2))
+
+    value = _SKU_THEN_NAME_RE.sub(_sku_then_name, value)
+    value = _NAME_THEN_SKU_RE.sub(_name_then_sku, value)
+    return _SKU_TOKEN_RE.sub(_bare_sku, value)
+
+
 def product_name_by_label(label: str) -> str:
     """按 “145-802” / “SKU 145-802” / “黑猪五花肉（145-802）” 取品名。"""
     text = str(label).strip()
@@ -162,7 +202,11 @@ def agent_prompt_block() -> str:
         "（店号-商品号），不要编造映射或库存数字。"
     )
     lines.append(
-        "回答时优先用「具体品名（店号-商品号）」指代商品，"
+        "回答时一律用「具体品名（店号-商品号）」指代商品，"
         "例如：黑猪五花肉（145-802）建议补货 13 件。"
+    )
+    lines.append(
+        "不要只输出「SKU 145-802」或裸的「145-802」；工具返回里的 sku_label 是 "
+        "SKU 格式，你必须在回答里换成上面的具体品名。"
     )
     return "\n".join(lines)

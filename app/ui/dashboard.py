@@ -54,7 +54,9 @@ import report_export  # noqa: E402 - Excel / PDF 日报导出
 # Streamlit 热更新只重跑主脚本，已导入的纯模块仍留在内存里。云端偶尔会出现
 # “dashboard.py 已是新代码、product_names 还是旧模块”的情况，这里检测到旧版就
 # 强制重载，避免 AttributeError: module 'product_names' has no attribute 'sku_display'。
-if not hasattr(product_names, "sku_display"):
+if not hasattr(product_names, "sku_display") or not hasattr(
+    product_names, "localize_sku_text"
+):
     importlib.reload(product_names)
     importlib.reload(report_export)
 
@@ -130,7 +132,7 @@ QUICK_QUESTIONS = [
     "SKU 977 有数据吗？",
 ]
 FRESH_QUICK_QUESTIONS = [
-    "哪些 SKU 最紧急？",
+    "哪些商品最紧急？",
     "黑猪五花肉（145-802）该补多少？",
     "哪些货快过期了？",
 ]
@@ -2570,7 +2572,7 @@ def _trace_whatif_table(key: tuple[int, int]) -> None:
         source_note = "全部 200 条序列合计"
     else:
         table = sub.copy()
-        source_note = f"仅 {series_label(*key)} 这一条序列"
+        source_note = f"仅 {product_names.sku_display(*key)} 这一条序列"
 
     table = table.sort_values("scenario_ratio")
     label_column = [
@@ -2705,7 +2707,7 @@ def render_trace_section(
 
     def _label(key: tuple[int, int]) -> str:
         tier = str(getattr(rows_by_key[key], "urgency", ""))
-        label = f"{product_names.product_name(*key)} · {series_label(*key)}"
+        label = product_names.sku_display(*key)
         return f"{label} · {tier}" if tier else label
 
     # 用选项指纹做 key，保留同一组选项下的选中状态。
@@ -2748,7 +2750,7 @@ def render_trace_section(
     cap_info = caps.get(key)
 
     st.markdown(
-        f"**{series_label(*key)}** · 建议订货 **{row['suggest_qty']:,}** 件"
+        f"**{product_names.sku_display(*key)}** · 建议订货 **{row['suggest_qty']:,}** 件"
         f"（紧急度 {row['urgency']}）"
     )
     with st.expander("复制 SKU 深链接"):
@@ -2784,7 +2786,7 @@ def render_trace_section(
 
     if asked:
         question = (
-            f"{series_label(*key)}：现有库存 {row['on_hand']:.2f}，"
+            f"{product_names.sku_display(*key)}：现有库存 {row['on_hand']:.2f}，"
             f"ROP_P90 {row['rop_p90']:.2f}，效期修正目标 {target_eff:.2f}，"
             f"建议订货 {row['suggest_qty']}。请解释这个订货量是怎么定的，"
             "并说明不按建议执行的风险。"
@@ -2814,10 +2816,12 @@ def render_trace_section(
     if cached_ai:
         with st.container(border=True):
             st.markdown("**AI 解读**")
-            st.markdown(cached_ai.get("answer", ""))
+            st.markdown(
+                product_names.localize_sku_text(cached_ai.get("answer", ""))
+            )
             if cached_ai.get("tools"):
                 with st.expander("查看工具调用"):
-                    _tool_call_markdown(cached_ai["tools"])
+                    _tool_call_markdown(cached_ai["tools"], localize=True)
 
     tab_chain, tab_whatif, tab_alpha = st.tabs(
         ["① 这个数怎么算的", "② 不照做会怎样", "③ 分位凭什么定在这"]
@@ -3083,11 +3087,11 @@ def render_order_panel(view: pd.DataFrame, snapshot: str) -> None:
 
     add_col, add_btn = st.columns([3.2, 1.0])
     selected = add_col.selectbox(
-        "选择 SKU 加入补货单",
+        "选择商品加入补货单",
         options=list(rows_by_key),
         index=None,
         format_func=lambda key: (
-            f"{product_names.product_name(*key)} · {series_label(*key)} · "
+            f"{product_names.sku_display(*key)} · "
             f"{rows_by_key[key].urgency} · 建议 {int(rows_by_key[key].suggest_qty)}"
         ),
         placeholder="选择一条序列",
@@ -3101,15 +3105,15 @@ def render_order_panel(view: pd.DataFrame, snapshot: str) -> None:
     ) and selected is not None:
         applied = add_to_cart(selected, rows_by_key[selected])
         st.session_state["order_cart"] = cart
-        st.toast(f"已加入 {series_label(*selected)}：{applied} 件")
+        st.toast(f"已加入 {product_names.sku_display(*selected)}：{applied} 件")
         st.rerun()
 
     bulk_pick_col, bulk_add_col = st.columns([3.2, 1.0])
     bulk_pick = bulk_pick_col.multiselect(
-        "批量选择 SKU（可多选）",
+        "批量选择商品（可多选）",
         options=list(rows_by_key),
         format_func=lambda key: (
-            f"{product_names.product_name(*key)} · {series_label(*key)} · "
+            f"{product_names.sku_display(*key)} · "
             f"{rows_by_key[key].urgency}"
         ),
         placeholder="选择多条序列，再点批量加入",
@@ -3171,9 +3175,8 @@ def render_order_panel(view: pd.DataFrame, snapshot: str) -> None:
             "移除一项",
             options=cart_keys,
             index=None,
-            format_func=lambda name: (
-                f"{product_names.product_name(*[int(part) for part in name.split('-')])} · "
-                f"{series_label(*[int(part) for part in name.split('-')])}"
+            format_func=lambda name: product_names.sku_display(
+                *[int(part) for part in name.split("-")]
             ),
             placeholder="选择要移除的商品",
             key=f"order_remove_{remove_sig}",
@@ -4241,13 +4244,10 @@ def render_fresh_detail(
         for s, p in zip(ranked["store_id"], ranked["product_id"])
     ]
     selected = st.selectbox(
-        "选择 SKU（门店-商品）",
+        "选择商品（门店-编号）",
         options=keys,
         index=0,
-        format_func=lambda key: (
-            f"{product_names.product_name(key[0], key[1])} · "
-            f"{series_label(key[0], key[1])}"
-        ),
+        format_func=lambda key: product_names.sku_display(key[0], key[1]),
         key="fresh_detail_series",
     )
 
@@ -4742,15 +4742,29 @@ def render_inventory(
 # ---------------------------------------------------------------------------
 # 底部：Agent 对话（两套数据源共用框架）
 # ---------------------------------------------------------------------------
-def _tool_call_markdown(tools: list[dict]) -> None:
+def _tool_call_markdown(tools: list[dict], localize: bool = False) -> None:
     for i, call in enumerate(tools, 1):
         st.markdown(f"**{i}. `{call.get('name', '未知工具')}`**")
+        args = call.get("args", {})
+        if (
+            localize
+            and isinstance(args, dict)
+            and args.get("store_id") is not None
+            and args.get("product_id") is not None
+        ):
+            st.caption(
+                "商品："
+                + product_names.sku_display(args["store_id"], args["product_id"])
+            )
         st.code(
-            json.dumps(call.get("args", {}), ensure_ascii=False, indent=2),
+            json.dumps(args, ensure_ascii=False, indent=2),
             language="json",
         )
         if call.get("summary"):
-            st.caption(str(call["summary"]))
+            summary = str(call["summary"])
+            st.caption(
+                product_names.localize_sku_text(summary) if localize else summary
+            )
 
 
 def normalize_dialect(text: str, dialect: str) -> tuple[str, list[tuple[str, str]]]:
@@ -4819,11 +4833,16 @@ def _ask_agent(
     )
 
 
-def _render_chat_history(display: list[dict], source_note: str | None) -> None:
+def _render_chat_history(
+    display: list[dict], source_note: str | None, localize: bool = False
+) -> None:
     for i, message in enumerate(display):
         role = message.get("role", "assistant")
         with st.chat_message(role):
-            st.markdown(message.get("content", ""))
+            content = str(message.get("content", ""))
+            st.markdown(
+                product_names.localize_sku_text(content) if localize else content
+            )
             if role == "user" and message.get("note"):
                 st.caption(message["note"])
             if role == "assistant":
@@ -4835,7 +4854,7 @@ def _render_chat_history(display: list[dict], source_note: str | None) -> None:
                 with st.expander(
                     "查看工具调用", expanded=(i == len(display) - 1)
                 ):
-                    _tool_call_markdown(tools)
+                    _tool_call_markdown(tools, localize=localize)
 
 
 def render_chat(
@@ -4872,7 +4891,9 @@ def render_chat(
 
     if not api_key:
         with history_slot.container():
-            _render_chat_history(display, source_note)
+            _render_chat_history(
+                display, source_note, localize=(dataset == "freshretail")
+            )
         st.caption("⚠️ 未配置 DEEPSEEK_API_KEY，对话功能暂不可用；图表与库存数据不受影响。")
         st.markdown('<div id="agent-chat-anchor"></div>', unsafe_allow_html=True)
         st.text_input(
@@ -4948,7 +4969,9 @@ def render_chat(
         display = st.session_state[display_key]
 
     with history_slot.container():
-        _render_chat_history(display, source_note)
+        _render_chat_history(
+            display, source_note, localize=(dataset == "freshretail")
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -5366,8 +5389,7 @@ def render_notification_center(
         else:
             for row in urgent.head(5).itertuples():
                 st.markdown(
-                    f"- **{product_names.product_name(row.store_id, row.product_id)}** · "
-                    f"{series_label(int(row.store_id), int(row.product_id))} · "
+                    f"- **{product_names.sku_display(row.store_id, row.product_id)}** · "
                     f"在库 {float(row.on_hand):.2f} · 建议 {int(row.suggest_qty)} 件"
                 )
         st.markdown(f"**临期**（{len(expiring)} 条）")
@@ -5376,8 +5398,7 @@ def render_notification_center(
         else:
             for row in expiring.head(5).itertuples():
                 st.markdown(
-                    f"- **{product_names.product_name(row.store_id, row.product_id)}** · "
-                    f"{series_label(int(row.store_id), int(row.product_id))} · "
+                    f"- **{product_names.sku_display(row.store_id, row.product_id)}** · "
                     f"临期 {float(row.expiring_qty):.2f} {FRESH_UNIT}"
                 )
         st.caption("仅页面内提醒；未接入企业微信/钉钉推送。")
@@ -5730,7 +5751,7 @@ def main_fresh() -> None:
         dataset="freshretail",
         state_key="fresh",
         quick_questions=FRESH_QUICK_QUESTIONS,
-        placeholder="问生鲜补货问题，例如：SKU 145-802 该补多少？",
+        placeholder="问生鲜补货问题，例如：黑猪五花肉（145-802）该补多少？",
         source_note=f"数据来源：补货快照 {snapshot}",
     )
     _inject_nav_scrollspy()
@@ -6288,13 +6309,19 @@ def render_global_ai(dataset: str) -> None:
 
         history = st.session_state.global_ai_messages
         if history:
+            localize = dataset == "freshretail"
             for message in history[-4:]:
                 with st.chat_message(message["role"]):
-                    st.markdown(message["content"])
+                    content = str(message["content"])
+                    st.markdown(
+                        product_names.localize_sku_text(content)
+                        if localize
+                        else content
+                    )
                     tools = message.get("tools") or []
                     if tools:
                         with st.expander("工具调用"):
-                            _tool_call_markdown(tools)
+                            _tool_call_markdown(tools, localize=localize)
         else:
             st.caption("例如：今天最该先补哪几条？")
 
@@ -6302,7 +6329,7 @@ def render_global_ai(dataset: str) -> None:
             prompt = st.text_input(
                 "问题",
                 label_visibility="collapsed",
-                placeholder="问补货问题，例如：SKU 145-802 该补多少？",
+                placeholder="问补货问题，例如：黑猪五花肉（145-802）该补多少？",
             )
             sent = st.form_submit_button("发送", use_container_width=True)
 
