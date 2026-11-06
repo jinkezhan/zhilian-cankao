@@ -1117,13 +1117,13 @@ div[data-testid="stHorizontalBlock"]:has(.source-egg-anchor) > div[data-testid="
   margin: 0 calc(50% - 50vw) 0;
   padding: 48px 0 58px;
   box-sizing: border-box;
-  color: #ffffff;
+  color: #173c25;
   text-align: center;
-  border-top: 1px solid rgba(126, 255, 170, 0.16);
+  border-top: 1px solid #d5e6d9;
   background:
-    radial-gradient(ellipse at 18% 0%, rgba(91, 191, 120, 0.18), transparent 46%),
-    linear-gradient(135deg, #06180f 0%, #0b3520 48%, #12603a 100%);
-  box-shadow: inset 0 1px 0 rgba(126, 255, 170, 0.08);
+    radial-gradient(ellipse at 18% 0%, rgba(91, 191, 120, 0.16), transparent 46%),
+    linear-gradient(135deg, #f4faf5 0%, #eaf4ec 48%, #dfeee3 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 .site-footer::before {
   content: "";
@@ -1135,7 +1135,7 @@ div[data-testid="stHorizontalBlock"]:has(.source-egg-anchor) > div[data-testid="
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(126, 255, 170, 0.46) 50%,
+    rgba(46, 158, 91, 0.38) 50%,
     transparent 100%
   );
   pointer-events: none;
@@ -1153,17 +1153,17 @@ div[data-testid="stHorizontalBlock"]:has(.source-egg-anchor) > div[data-testid="
   font-size: 12px;
   font-weight: 800;
   letter-spacing: .04em;
-  box-shadow: 0 8px 20px rgba(31, 122, 61, 0.28);
+  box-shadow: 0 8px 20px rgba(31, 122, 61, 0.22);
 }
 .site-footer .footer-line1 {
-  color: #ffffff;
+  color: #173c25;
   font-size: 17px;
   font-weight: 700;
   line-height: 1.8;
   letter-spacing: .04em;
 }
 .site-footer .footer-line2 {
-  color: rgba(183, 247, 200, 0.72);
+  color: #5f7a66;
   font-size: 12px;
   line-height: 1.8;
   letter-spacing: .08em;
@@ -1593,23 +1593,24 @@ div[data-testid="stDownloadButton"] button:hover {
 .site-footer-main {
   margin: 48px -32px 0;
   padding: 34px 32px 46px;
-  background: #124a2a;
-  color: rgba(255, 255, 255, .72);
+  background: #eaf3ec;
+  border-top: 1px solid #dbe9de;
+  color: #3f5f4a;
 }
 .site-footer-main-inner {
   max-width: 1480px; margin: 0 auto;
   display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 26px;
 }
-.site-footer-main-heading { color: #ffffff; font-size: 13px; font-weight: 700; margin: 0 0 10px; letter-spacing: .02em; }
-.site-footer-main p { margin: 0; font-size: 11.5px; line-height: 1.7; color: rgba(255, 255, 255, .58); }
-.site-footer-main a { display: block; color: rgba(255, 255, 255, .72); text-decoration: none; font-size: 11.5px; line-height: 2; }
-.site-footer-main a:hover { color: #bff0c8; }
-.site-footer-main-brand { color: #ffffff; font-size: 17px; font-weight: 800; letter-spacing: .04em; margin-bottom: 6px; }
+.site-footer-main-heading { color: #145c2c; font-size: 13px; font-weight: 700; margin: 0 0 10px; letter-spacing: .02em; }
+.site-footer-main p { margin: 0; font-size: 11.5px; line-height: 1.7; color: #5f7a66; }
+.site-footer-main a { display: block; color: #3f5f4a; text-decoration: none; font-size: 11.5px; line-height: 2; }
+.site-footer-main a:hover { color: #145c2c; }
+.site-footer-main-brand { color: #145c2c; font-size: 17px; font-weight: 800; letter-spacing: .04em; margin-bottom: 6px; }
 .site-footer-main-bottom {
   max-width: 1480px; margin: 22px auto 0; padding-top: 14px;
-  border-top: 1px solid rgba(255, 255, 255, .14);
+  border-top: 1px solid #d5e5d8;
   display: flex; justify-content: space-between; gap: 12px;
-  font-size: 11px; color: rgba(255, 255, 255, .46);
+  font-size: 11px; color: #7a8f7f;
 }
 
 @media (max-width: 900px) {
