@@ -1110,20 +1110,20 @@ div[data-testid="stHorizontalBlock"]:has(.source-egg-anchor) > div[data-testid="
 }
 .side-nav .side-text { font-size: 14.5px; letter-spacing: .01em; }
 
-/* ---------- 网站封底 ---------- */
+/* ---------- 网站封底（自然绿主题） ---------- */
 .site-footer {
   position: relative;
   width: 100vw;
-  margin: 44px calc(50% - 50vw) 0;
-  padding: 40px 0;
+  margin: 0 calc(50% - 50vw) 0;
+  padding: 48px 0 58px;
   box-sizing: border-box;
   color: #ffffff;
   text-align: center;
-  border-top: 1px solid rgba(255, 255, 255, 0.10);
+  border-top: 1px solid rgba(126, 255, 170, 0.16);
   background:
-    radial-gradient(ellipse at 18% 0%, rgba(60, 148, 226, 0.16), transparent 46%),
-    linear-gradient(135deg, #0f2027 0%, #203a43 48%, #2c5364 100%);
-  box-shadow: inset 0 1px 0 rgba(143, 212, 255, 0.08);
+    radial-gradient(ellipse at 18% 0%, rgba(91, 191, 120, 0.18), transparent 46%),
+    linear-gradient(135deg, #06180f 0%, #0b3520 48%, #12603a 100%);
+  box-shadow: inset 0 1px 0 rgba(126, 255, 170, 0.08);
 }
 .site-footer::before {
   content: "";
@@ -1135,23 +1135,38 @@ div[data-testid="stHorizontalBlock"]:has(.source-egg-anchor) > div[data-testid="
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(143, 212, 255, 0.42) 50%,
+    rgba(126, 255, 170, 0.46) 50%,
     transparent 100%
   );
   pointer-events: none;
 }
+.site-footer .footer-mark {
+  width: 42px;
+  height: 42px;
+  margin: 0 auto 14px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #1f7a3d, #5bbf78);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  box-shadow: 0 8px 20px rgba(31, 122, 61, 0.28);
+}
 .site-footer .footer-line1 {
   color: #ffffff;
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 700;
   line-height: 1.8;
-  letter-spacing: 1px;
+  letter-spacing: .04em;
 }
 .site-footer .footer-line2 {
-  color: #a0aec0;
+  color: rgba(183, 247, 200, 0.72);
   font-size: 12px;
   line-height: 1.8;
-  letter-spacing: 1px;
+  letter-spacing: .08em;
   margin-top: 6px;
 }
 
@@ -7630,6 +7645,7 @@ def main() -> None:
     # 网站封底：保留原来的收尾设计，放在内容页脚之后
     st.markdown(
         '<div class="site-footer">'
+        '<div class="footer-mark">ZL</div>'
         '<div class="footer-line1">智链参谋 · 生鲜前置仓 AI 补货决策系统</div>'
         '<div class="footer-line2">全国人工智能应用创新大赛</div>'
         "</div>",
