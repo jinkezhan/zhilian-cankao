@@ -1574,24 +1574,23 @@ div[data-testid="stDownloadButton"] button:hover {
 .feature-title { color: #173c25; font-size: 13px; font-weight: 700; margin-bottom: 2px; }
 .feature-desc { color: #6b7a70; font-size: 11.5px; line-height: 1.55; }
 
-/* ---------- 页脚：参考模板的深绿页脚 ---------- */
-.site-footer {
-  margin: 48px -32px -96px;
-  padding: 34px 32px 86px;
+/* ---------- 内容页脚：参考模板的深绿页脚 ---------- */
+.site-footer-main {
+  margin: 48px -32px 0;
+  padding: 34px 32px 46px;
   background: #124a2a;
   color: rgba(255, 255, 255, .72);
 }
-.site-footer-inner {
+.site-footer-main-inner {
   max-width: 1480px; margin: 0 auto;
   display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 26px;
 }
-.site-footer h4,
-.site-footer-heading { color: #ffffff; font-size: 13px; font-weight: 700; margin: 0 0 10px; letter-spacing: .02em; }
-.site-footer p { margin: 0; font-size: 11.5px; line-height: 1.7; color: rgba(255, 255, 255, .58); }
-.site-footer a { display: block; color: rgba(255, 255, 255, .72); text-decoration: none; font-size: 11.5px; line-height: 2; }
-.site-footer a:hover { color: #bff0c8; }
-.site-footer-brand { color: #ffffff; font-size: 17px; font-weight: 800; letter-spacing: .04em; margin-bottom: 6px; }
-.site-footer-bottom {
+.site-footer-main-heading { color: #ffffff; font-size: 13px; font-weight: 700; margin: 0 0 10px; letter-spacing: .02em; }
+.site-footer-main p { margin: 0; font-size: 11.5px; line-height: 1.7; color: rgba(255, 255, 255, .58); }
+.site-footer-main a { display: block; color: rgba(255, 255, 255, .72); text-decoration: none; font-size: 11.5px; line-height: 2; }
+.site-footer-main a:hover { color: #bff0c8; }
+.site-footer-main-brand { color: #ffffff; font-size: 17px; font-weight: 800; letter-spacing: .04em; margin-bottom: 6px; }
+.site-footer-main-bottom {
   max-width: 1480px; margin: 22px auto 0; padding-top: 14px;
   border-top: 1px solid rgba(255, 255, 255, .14);
   display: flex; justify-content: space-between; gap: 12px;
@@ -1600,13 +1599,13 @@ div[data-testid="stDownloadButton"] button:hover {
 
 @media (max-width: 900px) {
   .feature-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .site-footer-inner { grid-template-columns: 1fr 1fr; }
+  .site-footer-main-inner { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 640px) {
   .feature-strip { grid-template-columns: 1fr; }
-  .site-footer { margin: 36px -12px -84px; padding: 26px 16px 82px; }
-  .site-footer-inner { grid-template-columns: 1fr; gap: 16px; }
-  .site-footer-bottom { flex-direction: column; }
+  .site-footer-main { margin: 36px -12px 0; padding: 26px 16px 30px; }
+  .site-footer-main-inner { grid-template-columns: 1fr; gap: 16px; }
+  .site-footer-main-bottom { flex-direction: column; }
 }
 
 </style>
@@ -2111,29 +2110,29 @@ def _feature_strip_html() -> str:
 def _site_footer_html() -> str:
     """页面底部深绿页脚，参考模板的电商落地页收尾。"""
     return (
-        '<footer class="site-footer">'
-        '<div class="site-footer-inner">'
+        '<footer class="site-footer-main">'
+        '<div class="site-footer-main-inner">'
         "<div>"
-        '<div class="site-footer-brand">智链参谋</div>'
+        '<div class="site-footer-main-brand">智链参谋</div>'
         "<p>生鲜前置仓补货决策智能体<br>"
         "让每一次补货都算得清、讲得明、能协同。</p>"
         "</div>"
-        '<div><div class="site-footer-heading">快捷入口</div>'
+        '<div><div class="site-footer-main-heading">快捷入口</div>'
         '<a href="#section-overview">今日概览</a>'
         '<a href="#section-inventory">库存健康</a>'
         '<a href="#section-forecast">7 天预测</a>'
         '<a href="#section-agent">智能问答</a>'
         "</div>"
-        '<div><div class="site-footer-heading">数据与口径</div>'
+        '<div><div class="site-footer-main-heading">数据与口径</div>'
         "<p>演示数据已脱敏<br>补货快照 2024-07-02<br>"
         "Excel / PDF 日报导出<br>角色权限分级</p>"
         "</div>"
-        '<div><div class="site-footer-heading">说明</div>'
+        '<div><div class="site-footer-main-heading">说明</div>'
         "<p>本页面用于产品演示<br>关键决策需人工复核<br>"
         "导入数据仅当前会话有效</p>"
         "</div>"
         "</div>"
-        '<div class="site-footer-bottom">'
+        '<div class="site-footer-main-bottom">'
         "<span>© 2026 智链参谋 · 生鲜前置仓补货决策智能体</span>"
         "<span>演示版本 · 数据仅用于产品展示</span>"
         "</div>"
@@ -7628,6 +7627,14 @@ def main() -> None:
     else:
         main_fresh()
 
+    # 网站封底：保留原来的收尾设计，放在内容页脚之后
+    st.markdown(
+        '<div class="site-footer">'
+        '<div class="footer-line1">智链参谋 · 生鲜前置仓 AI 补货决策系统</div>'
+        '<div class="footer-line2">全国人工智能应用创新大赛</div>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
     render_global_ai("dataco" if source_mode == "dataco" else "freshretail")
     _inject_floating_assistant()
 
