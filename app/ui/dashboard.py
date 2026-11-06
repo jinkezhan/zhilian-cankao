@@ -241,9 +241,9 @@ FRESH_METRICS = "freshretail_forecast_metrics.csv"
 URGENCY_RANK = {"紧急": 0, "建议补货": 1, "计划补货": 2, "正常": 3}
 
 # 图表色：历史线用分类蓝；预测分位用同色系 ordinal 蓝阶
-BLUE = "#2a78d6"
-BLUE_LIGHT = "#86b6ef"
-BLUE_DARK = "#184f95"
+BLUE = "#2f7d4f"
+BLUE_LIGHT = "#8fd3a8"
+BLUE_DARK = "#1f5e38"
 INK = "#0b0b0b"
 SECONDARY = "#52514e"
 MUTED = "#6b7f94"
@@ -453,7 +453,7 @@ section.main { scroll-behavior: smooth; }
 [data-testid="stMetric"] {
   background: #ffffff;
   border: 1px solid #E1EAF4;
-  border-left: 4px solid #1E6FB8;
+  border-left: 4px solid #2e9e5b;
   border-radius: 16px;
   padding: 16px 18px;
   box-shadow: 0 6px 20px rgba(11, 42, 74, .05);
@@ -793,27 +793,27 @@ div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > 
   background: transparent !important;
 }
 div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .auth-panel-anchor) div[data-testid="stFormSubmitButton"] button {
-  background: #0B2A4A !important;
-  border: 1px solid #0B2A4A !important;
+  background: #1f7a3d !important;
+  border: 1px solid #1f7a3d !important;
   color: #ffffff !important;
 }
 div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .auth-panel-anchor) div[data-testid="stFormSubmitButton"] button p {
   color: #ffffff !important;
 }
 div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .auth-panel-anchor) div[data-testid="stFormSubmitButton"] button:hover {
-  background: #123a63 !important;
-  border-color: #123a63 !important;
+  background: #17632f !important;
+  border-color: #17632f !important;
 }
-.auth-panel-title { color: #0B2A4A; font-size: 15px; font-weight: 700; letter-spacing: .01em; }
+.auth-panel-title { color: #173c25; font-size: 15px; font-weight: 700; letter-spacing: .01em; }
 .auth-user-row { display: flex; align-items: center; gap: 10px; margin: 12px 0 4px; }
 .auth-avatar {
   width: 38px; height: 38px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, #0B2A4A, #1E6FB8);
+  background: linear-gradient(135deg, #1f7a3d, #4fae6b);
   color: #ffffff; font-size: 13px; font-weight: 700;
-  box-shadow: 0 4px 12px rgba(30, 111, 184, .25);
+  box-shadow: 0 4px 12px rgba(31, 122, 61, .25);
 }
-.auth-user-name { color: #0B2A4A; font-size: 13.5px; font-weight: 700; }
+.auth-user-name { color: #173c25; font-size: 13.5px; font-weight: 700; }
 .auth-user-meta { color: #6b7f94; font-size: 11.5px; margin-top: 2px; }
 .auth-panel-note { color: #6b7f94; font-size: 11.5px; margin: 6px 0 10px; }
 
@@ -873,7 +873,7 @@ div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > 
   font-weight: 700;
   line-height: 16px;
   text-align: center;
-  box-shadow: 0 0 0 2px #0B2A4A;
+  box-shadow: 0 0 0 2px #ffffff;
 }
 div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .notif-panel-anchor) {
   position: fixed !important;
@@ -1427,6 +1427,188 @@ div[data-testid="stDownloadButton"] button:hover {
   .fresh-hero-copy p { font-size: 12.5px; }
 }
 
+/* =====================================================================
+   视觉优化：自然绿主题（参考 pa/pb/pc 模板）
+   白底顶栏 · 绿色品牌色 · 浅灰绿页面 · 圆角卡片 · 深绿页脚
+   ===================================================================== */
+.stApp { background: #f5f7f3; }
+
+/* ---------- 顶栏：白底 + 绿色品牌 ---------- */
+.top-navbar {
+  background: rgba(255, 255, 255, 0.96) !important;
+  border-bottom: 1px solid #e3ebe3 !important;
+  box-shadow: 0 6px 24px rgba(20, 60, 35, 0.07) !important;
+  color: #1f2a24 !important;
+  backdrop-filter: blur(14px) saturate(1.1);
+}
+.nav-logo {
+  background: linear-gradient(135deg, #1f7a3d, #5bbf78) !important;
+  box-shadow: 0 4px 12px rgba(31, 122, 61, .28) !important;
+}
+.nav-brand { color: #173c25 !important; letter-spacing: .02em; }
+.nav-links a { color: #5f6f63 !important; font-weight: 600; }
+.nav-links a:hover {
+  color: #1f7a3d !important;
+  background: #eef6ef !important;
+  text-shadow: none !important;
+}
+.nav-links a.active {
+  color: #145c2c !important;
+  background: #e8f3ea !important;
+  box-shadow: inset 0 0 0 1px #cfe6d3 !important;
+}
+.nav-more summary { color: #5f6f63 !important; }
+.nav-more[open] summary { color: #1f7a3d !important; background: #eef6ef !important; }
+.nav-more-panel {
+  background: #ffffff !important;
+  border-color: #e1e9e0 !important;
+  box-shadow: 0 14px 34px rgba(20, 60, 35, .12) !important;
+}
+.nav-more-panel a { color: #3f4f44 !important; }
+.nav-more-panel a:hover { color: #145c2c !important; background: #eef6ef !important; }
+.nav-store { background: #f4f8f3 !important; border-color: #dfe9df !important; }
+.nav-store:hover, .nav-store:focus-within {
+  background: #eef6ef !important;
+  border-color: #b9d9bf !important;
+  box-shadow: 0 0 0 3px rgba(46, 158, 91, .10) !important;
+}
+.nav-store-value, .nav-store-select { color: #145c2c !important; }
+.nav-store-select option { background: #ffffff !important; color: #1f2a24 !important; }
+.nav-store-caret { color: #2e9e5b !important; }
+.nav-date { color: #7a8a7e !important; }
+.nav-status { color: #5f6f63 !important; }
+.nav-auth-label { color: #145c2c !important; }
+.nav-dot { background: #2e9e5b !important; box-shadow: 0 0 8px rgba(46, 158, 91, .55) !important; }
+
+/* 顶栏头像 / 铃铛：绿色按钮 */
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .nav-auth-anchor) button {
+  background: linear-gradient(135deg, #1f7a3d, #4fae6b) !important;
+  border-color: rgba(31, 122, 61, .35) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(31, 122, 61, .28) !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .nav-auth-anchor) button:hover {
+  background: linear-gradient(135deg, #17632f, #3f9b5b) !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .notif-bell-anchor) button {
+  background: #eef6ef !important;
+  border-color: #d6e6d7 !important;
+  color: #1f7a3d !important;
+  box-shadow: none !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .notif-bell-anchor) button p {
+  color: #1f7a3d !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] > div[data-testid="stMarkdown"] .notif-bell-anchor) button:hover {
+  background: #e3f2e6 !important;
+}
+
+/* ---------- 标题与卡片 ---------- */
+h3 {
+  color: #173c25 !important;
+  border-left: 4px solid #2e9e5b;
+  padding-left: 10px;
+}
+.overview-dock { margin: 22px 0 18px; }
+.ov-card, .kpi-card, .metric-card, .reco-card {
+  border-color: #e3ebe3 !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 24px rgba(20, 60, 35, .05) !important;
+}
+.ov-card:hover {
+  box-shadow: 0 12px 28px rgba(20, 60, 35, .08) !important;
+}
+.ov-card:not(.ov-alert):not(.ov-warn):not(.ov-primary) .ov-dot {
+  background: #2e9e5b;
+  box-shadow: 0 0 0 3px rgba(46, 158, 91, .12);
+}
+.import-banner {
+  border-color: #cfe6d3 !important;
+  background: #eef7ef !important;
+  color: #145c2c !important;
+}
+.import-dot { background: #2e9e5b !important; box-shadow: 0 0 8px rgba(46, 158, 91, .55) !important; }
+
+/* 主按钮 / 下载按钮 */
+div[data-testid="stButton"] button[kind="primary"],
+div[data-testid="stFormSubmitButton"] button[kind="primary"] {
+  background: #1f7a3d !important;
+  border-color: #1f7a3d !important;
+  color: #ffffff !important;
+}
+div[data-testid="stButton"] button[kind="primary"]:hover,
+div[data-testid="stFormSubmitButton"] button[kind="primary"]:hover {
+  background: #17632f !important;
+  border-color: #17632f !important;
+}
+div[data-testid="stDownloadButton"] button {
+  color: #1f7a3d;
+  border-color: #d6e6d7;
+}
+div[data-testid="stDownloadButton"] button:hover {
+  border-color: #9ccdae;
+  background: #eef7ef;
+  color: #145c2c;
+}
+
+/* ---------- 能力条：参考模板的白色悬浮功能卡 ---------- */
+.feature-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  background: #ffffff;
+  border: 1px solid #e3ebe3;
+  border-radius: 16px;
+  padding: 16px 18px;
+  margin: 18px 0 8px;
+  box-shadow: 0 10px 26px rgba(20, 60, 35, .06);
+}
+.feature-item { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.feature-icon {
+  width: 34px; height: 34px; border-radius: 10px;
+  background: #eef7ef; color: #1f7a3d;
+  display: flex; align-items: center; justify-content: center;
+  flex: 0 0 auto;
+}
+.feature-icon svg { width: 18px; height: 18px; }
+.feature-title { color: #173c25; font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+.feature-desc { color: #6b7a70; font-size: 11.5px; line-height: 1.55; }
+
+/* ---------- 页脚：参考模板的深绿页脚 ---------- */
+.site-footer {
+  margin: 48px -32px -96px;
+  padding: 34px 32px 86px;
+  background: #124a2a;
+  color: rgba(255, 255, 255, .72);
+}
+.site-footer-inner {
+  max-width: 1480px; margin: 0 auto;
+  display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 26px;
+}
+.site-footer h4,
+.site-footer-heading { color: #ffffff; font-size: 13px; font-weight: 700; margin: 0 0 10px; letter-spacing: .02em; }
+.site-footer p { margin: 0; font-size: 11.5px; line-height: 1.7; color: rgba(255, 255, 255, .58); }
+.site-footer a { display: block; color: rgba(255, 255, 255, .72); text-decoration: none; font-size: 11.5px; line-height: 2; }
+.site-footer a:hover { color: #bff0c8; }
+.site-footer-brand { color: #ffffff; font-size: 17px; font-weight: 800; letter-spacing: .04em; margin-bottom: 6px; }
+.site-footer-bottom {
+  max-width: 1480px; margin: 22px auto 0; padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, .14);
+  display: flex; justify-content: space-between; gap: 12px;
+  font-size: 11px; color: rgba(255, 255, 255, .46);
+}
+
+@media (max-width: 900px) {
+  .feature-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .site-footer-inner { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 640px) {
+  .feature-strip { grid-template-columns: 1fr; }
+  .site-footer { margin: 36px -12px -84px; padding: 26px 16px 82px; }
+  .site-footer-inner { grid-template-columns: 1fr; gap: 16px; }
+  .site-footer-bottom { flex-direction: column; }
+}
+
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -1882,6 +2064,83 @@ def _fresh_hero_html() -> str:
     )
 
 
+def _feature_strip_html() -> str:
+    """参考模板的白色能力条，放在 Banner 下方。"""
+    icons = {
+        "chart": (
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+            '<path d="M4 19V5M4 19h16"/><path d="M7 15l4-5 3 3 5-6"/></svg>'
+        ),
+        "shield": (
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+            '<path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/>'
+            '<path d="M12 8v4l3 2"/></svg>'
+        ),
+        "search": (
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+            '<circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/></svg>'
+        ),
+        "users": (
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+            '<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 2.5-5 6-5s6 2 6 5"/>'
+            '<path d="M16 7a3 3 0 010 6"/><path d="M17 20c0-2 .8-3.5 2.5-4.3"/></svg>'
+        ),
+    }
+    items = [
+        ("chart", "7 天需求预测", "P50 / P90 双分位，提前锁定缺口"),
+        ("shield", "效期约束补货", "保质期内可售量封顶，减少报损"),
+        ("search", "决策可解释", "ROP → 目标 → 效期 → 订货量全链路"),
+        ("users", "角色化协同", "店长 / 店员 / 督导 / 总公司各看各的范围"),
+    ]
+    cells = "".join(
+        '<div class="feature-item">'
+        f'<div class="feature-icon">{icons[key]}</div>'
+        "<div>"
+        f'<div class="feature-title">{html.escape(title)}</div>'
+        f'<div class="feature-desc">{html.escape(desc)}</div>'
+        "</div></div>"
+        for key, title, desc in items
+    )
+    return f'<section class="feature-strip" aria-label="核心能力">{cells}</section>'
+
+
+def _site_footer_html() -> str:
+    """页面底部深绿页脚，参考模板的电商落地页收尾。"""
+    return (
+        '<footer class="site-footer">'
+        '<div class="site-footer-inner">'
+        "<div>"
+        '<div class="site-footer-brand">智链参谋</div>'
+        "<p>生鲜前置仓补货决策智能体<br>"
+        "让每一次补货都算得清、讲得明、能协同。</p>"
+        "</div>"
+        '<div><div class="site-footer-heading">快捷入口</div>'
+        '<a href="#section-overview">今日概览</a>'
+        '<a href="#section-inventory">库存健康</a>'
+        '<a href="#section-forecast">7 天预测</a>'
+        '<a href="#section-agent">智能问答</a>'
+        "</div>"
+        '<div><div class="site-footer-heading">数据与口径</div>'
+        "<p>演示数据已脱敏<br>补货快照 2024-07-02<br>"
+        "Excel / PDF 日报导出<br>角色权限分级</p>"
+        "</div>"
+        '<div><div class="site-footer-heading">说明</div>'
+        "<p>本页面用于产品演示<br>关键决策需人工复核<br>"
+        "导入数据仅当前会话有效</p>"
+        "</div>"
+        "</div>"
+        '<div class="site-footer-bottom">'
+        "<span>© 2026 智链参谋 · 生鲜前置仓补货决策智能体</span>"
+        "<span>演示版本 · 数据仅用于产品展示</span>"
+        "</div>"
+        "</footer>"
+    )
+
+
 def _fresh_hero_carousel_html(
     snapshot: str,
     data_label: str,
@@ -1917,7 +2176,7 @@ def _fresh_hero_carousel_html(
     padding: 0;
     width: 100%;
     height: 100%;
-    background: #f8f9fa;
+    background: #f5f7f3;
     font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
     overflow: hidden;
   }
@@ -1927,7 +2186,7 @@ def _fresh_hero_carousel_html(
     height: 340px;
     overflow: hidden;
     border-radius: 0;
-    background: #071b32;
+    background: #0b2a1a;
   }
   .hero-slide {
     position: absolute;
@@ -1959,9 +2218,9 @@ def _fresh_hero_carousel_html(
     z-index: 1;
     background: linear-gradient(
       180deg,
-      rgba(0, 0, 0, 0.10) 0%,
-      rgba(0, 0, 0, 0.22) 42%,
-      rgba(0, 0, 0, 0.62) 100%
+      rgba(4, 20, 12, 0.08) 0%,
+      rgba(4, 20, 12, 0.26) 42%,
+      rgba(4, 20, 12, 0.72) 100%
     );
   }
   .hero-copy {
@@ -1976,7 +2235,7 @@ def _fresh_hero_carousel_html(
     padding: 30px 42px 54px;
   }
   .hero-kicker {
-    color: #8fd4ff;
+    color: #b7f7c8;
     font-size: 10.5px;
     font-weight: 700;
     letter-spacing: .2em;
@@ -2013,7 +2272,7 @@ def _fresh_hero_carousel_html(
     padding: 9px 12px 9px 16px;
     border-radius: 999px;
     border: 1px solid rgba(255, 255, 255, 0.18);
-    background: rgba(7, 27, 50, 0.42);
+    background: rgba(6, 30, 18, 0.48);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.20);
@@ -2032,17 +2291,17 @@ def _fresh_hero_carousel_html(
     padding: 0 14px;
     border: 0;
     border-radius: 999px;
-    background: #1E6FB8;
+    background: #1f7a3d;
     color: #ffffff;
     font-family: inherit;
     font-size: 12.5px;
     font-weight: 700;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(30, 111, 184, 0.40);
+    box-shadow: 0 4px 14px rgba(31, 122, 61, 0.38);
     transition: background .15s ease, transform .15s ease;
   }
   .hero-cta:hover {
-    background: #2479c4;
+    background: #17632f;
     transform: translateY(-1px);
   }
   .hero-meta {
@@ -2064,7 +2323,7 @@ def _fresh_hero_carousel_html(
     gap: 7px;
     padding: 7px 12px;
     border-radius: 999px;
-    background: rgba(7, 27, 50, 0.44);
+    background: rgba(6, 30, 18, 0.50);
     border: 1px solid rgba(255, 255, 255, 0.22);
     color: rgba(255, 255, 255, 0.92);
     font-size: 11.5px;
@@ -2103,8 +2362,8 @@ def _fresh_hero_carousel_html(
   }
   .hero-dot.active {
     width: 22px;
-    background: #8fd4ff;
-    border-color: #8fd4ff;
+    background: #7de3a1;
+    border-color: #7de3a1;
   }
   @media (max-width: 760px) {
     .hero-carousel { height: 320px; }
@@ -2509,7 +2768,7 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
   html, body {
     margin: 0; padding: 0; width: 100%; height: 100%;
     overflow-x: hidden;
-    background: #f8f9fa;
+    background: #f5f7f3;
     font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
     color: #334155;
   }
@@ -2541,7 +2800,7 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
     position: sticky;
     top: 0;
     z-index: 5;
-    background: linear-gradient(180deg, #0E3A63, #0B2F52);
+    background: linear-gradient(180deg, #145c2c, #124a2a);
     background-clip: padding-box;
     color: #EAF3FB;
     font-size: 11.5px;
@@ -2556,10 +2815,10 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
   thead th[data-type="num"] { text-align: right; }
   thead th:first-child { border-radius: 10px 0 0 10px; }
   thead th:last-child { border-radius: 0 10px 10px 0; }
-  thead th.sorted-asc::after { content: " ▲"; color: #8FD4FF; font-size: 10px; }
-  thead th.sorted-desc::after { content: " ▼"; color: #8FD4FF; font-size: 10px; }
+  thead th.sorted-asc::after { content: " ▲"; color: #B7F7C8; font-size: 10px; }
+  thead th.sorted-desc::after { content: " ▼"; color: #B7F7C8; font-size: 10px; }
   thead th:focus-visible {
-    outline: 2px solid #8FD4FF;
+    outline: 2px solid #B7F7C8;
     outline-offset: -2px;
   }
   tbody td {
@@ -2579,9 +2838,9 @@ def _fresh_inventory_table_html(display: pd.DataFrame) -> str:
     border-radius: 0 10px 10px 0;
   }
   tbody tr.row-expiring td { background: #FFF7E8; }
-  tbody tr:hover td { background: #F6FAFE; }
-  td.num { text-align: right; font-variant-numeric: tabular-nums; color: #0B2A4A; font-weight: 600; }
-  td.sku { text-align: left; color: #0B2A4A; font-weight: 700; }
+  tbody tr:hover td { background: #F3F8F3; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; color: #173C25; font-weight: 600; }
+  td.sku { text-align: left; color: #173C25; font-weight: 700; }
   .badge {
     display: inline-flex; align-items: center; gap: 6px;
     padding: 5px 12px; border-radius: 999px;
@@ -6233,7 +6492,7 @@ def render_daily_brief(repl: pd.DataFrame | None, snapshot: str) -> None:
         return
     st.markdown(
         '<section role="note" style="display:flex;gap:12px;align-items:flex-start;'
-        "background:#FFFFFF;border:1px solid #DCE7F3;border-left:4px solid #1E6FB8;"
+        "background:#FFFFFF;border:1px solid #DCE7E0;border-left:4px solid #2E9E5B;"
         "border-radius:16px;padding:14px 18px;margin:14px 0 16px;"
         'box-shadow:0 6px 18px rgba(11,42,74,.05);">'
         '<span style="font-size:18px;line-height:1.35;flex:0 0 auto;">☀</span>'
@@ -6638,6 +6897,7 @@ def main_fresh() -> None:
         ),
         height=340,
     )
+    st.markdown(_feature_strip_html(), unsafe_allow_html=True)
 
     if repl is None or repl.empty:
         if allowed_stores is not None:
@@ -6736,6 +6996,7 @@ def main_fresh() -> None:
             else f"数据来源：补货快照 {snapshot}"
         ),
     )
+    st.markdown(_site_footer_html(), unsafe_allow_html=True)
     _inject_nav_scrollspy()
 
 
@@ -6801,15 +7062,15 @@ def _inject_floating_assistant() -> None:
               background:
                 radial-gradient(circle at 32% 24%,
                   rgba(255,255,255,.98) 0%,
-                  rgba(177,235,255,.92) 7%,
-                  rgba(84,187,246,.76) 18%,
-                  rgba(30,111,184,.72) 38%,
-                  rgba(7,31,58,.98) 68%,
-                  #02070f 100%);
+                  rgba(200,255,215,.92) 7%,
+                  rgba(104,220,140,.76) 18%,
+                  rgba(31,122,61,.78) 38%,
+                  rgba(6,40,24,.98) 68%,
+                  #010a05 100%);
               box-shadow:
-                0 12px 34px rgba(0,8,24,.55),
-                0 0 0 1px rgba(126,206,255,.32),
-                0 0 28px rgba(30,111,184,.55);
+                0 12px 34px rgba(0,12,6,.55),
+                0 0 0 1px rgba(126,255,170,.32),
+                0 0 28px rgba(31,122,61,.55);
               animation: aiOrbBreathe 4.5s ease-in-out infinite;
               transition: transform .18s ease, box-shadow .18s ease;
               font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
@@ -6831,7 +7092,7 @@ def _inject_floating_assistant() -> None:
               left: 8px;
               bottom: 7px;
               border-radius: 50%;
-              border: 2px solid rgba(109,205,255,.65);
+              border: 2px solid rgba(130,240,170,.65);
               border-top-color: rgba(255,255,255,.95);
               transform: rotate(-35deg);
               opacity: .72;
@@ -6840,7 +7101,7 @@ def _inject_floating_assistant() -> None:
             }
             #ai-orb-button:hover { transform: scale(1.06); }
             #ai-orb-button:focus-visible {
-              outline: 2px solid #8fd4ff;
+              outline: 2px solid #7de3a1;
               outline-offset: 4px;
             }
             #ai-orb-button.dragging {
@@ -6851,10 +7112,10 @@ def _inject_floating_assistant() -> None:
             #ai-orb-button .ai-orb-icon {
               position: relative;
               z-index: 2;
-              color: #eaf8ff;
+              color: #eafff0;
               font-size: 20px;
               line-height: 1;
-              text-shadow: 0 0 12px rgba(125,215,255,.95);
+              text-shadow: 0 0 12px rgba(125,255,170,.95);
               pointer-events: none;
             }
             #ai-orb-bubble {
@@ -6867,10 +7128,10 @@ def _inject_floating_assistant() -> None:
               box-sizing: border-box;
               padding: 12px 15px;
               border-radius: 16px;
-              border: 1px solid rgba(126,206,255,.35);
-              background: linear-gradient(135deg, #071b32 0%, #0c3a64 55%, #155b96 100%);
-              box-shadow: 0 18px 44px rgba(0,8,24,.42);
-              color: #eaf7ff;
+              border: 1px solid rgba(126,255,170,.35);
+              background: linear-gradient(135deg, #06180f 0%, #0b3520 55%, #12603a 100%);
+              box-shadow: 0 18px 44px rgba(0,12,6,.42);
+              color: #eafff0;
               font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
               font-size: 13px;
               line-height: 1.65;
@@ -6894,24 +7155,24 @@ def _inject_floating_assistant() -> None:
               left: 74px;
             }
             #ai-orb-bubble .ai-orb-bubble-icon {
-              color: #8fd4ff;
+              color: #7de3a1;
               font-size: 15px;
               line-height: 1.45;
               flex: 0 0 auto;
-              text-shadow: 0 0 10px rgba(126,206,255,.8);
+              text-shadow: 0 0 10px rgba(126,255,170,.8);
             }
             @keyframes aiOrbBreathe {
               0%, 100% {
                 box-shadow:
-                  0 12px 34px rgba(0,8,24,.55),
-                  0 0 0 1px rgba(126,206,255,.32),
-                  0 0 28px rgba(30,111,184,.55);
+                  0 12px 34px rgba(0,12,6,.55),
+                  0 0 0 1px rgba(126,255,170,.32),
+                  0 0 28px rgba(31,122,61,.55);
               }
               50% {
                 box-shadow:
-                  0 14px 38px rgba(0,8,24,.6),
-                  0 0 0 1px rgba(126,206,255,.4),
-                  0 0 38px rgba(64,162,235,.7);
+                  0 14px 38px rgba(0,12,6,.6),
+                  0 0 0 1px rgba(126,255,170,.4),
+                  0 0 38px rgba(46,158,91,.7);
               }
             }
             @media (prefers-reduced-motion: reduce) {
@@ -7367,13 +7628,6 @@ def main() -> None:
     else:
         main_fresh()
 
-    st.markdown(
-        '<div class="site-footer">'
-        '<div class="footer-line1">智链参谋 · 生鲜前置仓 AI 补货决策系统</div>'
-        '<div class="footer-line2">全国人工智能应用创新大赛</div>'
-        "</div>",
-        unsafe_allow_html=True,
-    )
     render_global_ai("dataco" if source_mode == "dataco" else "freshretail")
     _inject_floating_assistant()
 
