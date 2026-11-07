@@ -37,17 +37,20 @@ import pandas as pd
 
 import product_names
 
-IMPORTED_DATA_VERSION = 2
+IMPORTED_DATA_VERSION = 3
 
 # ---------------------------------------------------------------------------
 # 表头识别
 # ---------------------------------------------------------------------------
 COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "SKU": ("SKU", "SKU编码", "SKU ID", "sku_id", "商品编码", "物料编码", "店 / SKU", "序列"),
-    "store_id": ("store_id", "店号", "门店号", "门店编号", "门店ID", "门店 ID", "店铺编号"),
+    "store_id": (
+        "store_id", "店号", "门店号", "门店编号", "门店ID", "门店 ID",
+        "店铺编号", "门店", "店铺", "store",
+    ),
     "product_id": ("product_id", "商品号", "商品编号", "商品ID", "商品 ID", "单品编号"),
     "库存": (
-        "库存", "现有库存", "当前库存", "库存数量", "可用库存",
+        "库存", "现有库存", "当前库存", "期末库存", "期初库存", "库存数量", "可用库存",
         "on_hand", "current_stock", "stock", "inventory",
     ),
     "日均销量": (
@@ -55,7 +58,9 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
         "销量", "销售量", "销量指数",
         "daily_mean", "avg_daily_sales", "daily_sales", "sales", "demand",
     ),
-    "保质期": ("保质期", "保质期天数", "效期", "shelf_life", "shelf_life_days"),
+    "保质期": (
+        "保质期", "保质期天数", "保质期天", "效期", "shelf_life", "shelf_life_days",
+    ),
     "提前期": ("提前期", "提前期天数", "补货提前期", "订货提前期", "lead_time", "lead_time_days"),
     "商品名称": ("商品名称", "品名", "商品名", "菜品名称", "product_name", "name"),
     "P90日销": ("P90日销", "P90销量", "日销P90", "p90_daily", "p90"),
@@ -65,6 +70,7 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "目标覆盖天数": ("目标覆盖天数", "覆盖天数", "target_cover_days", "cover_days"),
     "最小订货量": ("最小订货量", "起订量", "MOQ", "min_order_qty"),
     "包装倍数": ("包装倍数", "包装规格", "箱规", "order_pack_size", "pack_size"),
+    "日期": ("日期", "业务日期", "销售日期", "date", "dt", "day"),
 }
 
 REQUIRED_FIELDS = ("库存", "日均销量", "保质期", "提前期")
@@ -107,19 +113,69 @@ def inspect_columns(mapping: dict[str, str]) -> list[str]:
     return missing
 
 
+_ZIP_MAGIC = b"PK\x03\x04"
+_OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+
+
+def _read_excel_bytes(data: bytes, label: str = "Excel 文件") -> pd.DataFrame:
+    try:
+        return pd.read_excel(io.BytesIO(data), engine="openpyxl")
+    except Exception as exc:
+        raise ValueError(f"{label}读取失败，请确认文件未损坏并另存为 .xlsx。") from exc
+
+
+def _read_csv_bytes(data: bytes) -> pd.DataFrame:
+    """按常见中文编码逐项尝试；分隔符不对时再用 sniff 重试。"""
+    encodings = ["utf-8-sig", "gb18030", "gbk", "utf-8"]
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        encodings = ["utf-16", *encodings]
+    last_error: Exception | None = None
+    for encoding in encodings:
+        try:
+            frame = pd.read_csv(io.BytesIO(data), encoding=encoding)
+        except (UnicodeDecodeError, pd.errors.ParserError, ValueError) as exc:
+            last_error = exc
+            continue
+        if frame.shape[1] <= 1:
+            try:
+                sniffed = pd.read_csv(
+                    io.BytesIO(data), encoding=encoding, sep=None, engine="python"
+                )
+                if sniffed.shape[1] > 1:
+                    return sniffed
+            except Exception:
+                pass
+        return frame
+    raise ValueError(
+        "CSV 编码或分隔符无法识别，请另存为 UTF-8 CSV 或 .xlsx 后重试。"
+    ) from last_error
+
+
 def read_uploaded_table(uploaded) -> pd.DataFrame:
     data = uploaded.getvalue()
     name = str(uploaded.name).lower()
-    if name.endswith(".csv"):
-        last_error: Exception | None = None
-        for encoding in ("utf-8-sig", "gbk", "utf-8"):
-            try:
-                return pd.read_csv(io.BytesIO(data), encoding=encoding)
-            except UnicodeDecodeError as exc:
-                last_error = exc
-        raise ValueError("CSV 编码无法识别，请另存为 UTF-8 后重试。") from last_error
-    if name.endswith(".xlsx"):
-        return pd.read_excel(io.BytesIO(data), engine="openpyxl")
+
+    # 以文件头为准，而不是只看扩展名：很多系统导出的“CSV”其实是 xlsx。
+    if data[:4] == _ZIP_MAGIC or data[:2] == b"PK":
+        return _read_excel_bytes(data, "Excel 文件")
+    if data[:8] == _OLE_MAGIC:
+        try:
+            return pd.read_excel(io.BytesIO(data), engine="xlrd")
+        except Exception as exc:
+            raise ValueError(
+                "这是旧版 Excel（.xls），请用 Excel 另存为 .xlsx 后重新上传。"
+            ) from exc
+    if name.endswith((".xlsx", ".xlsm")):
+        return _read_excel_bytes(data, "Excel 文件")
+    if name.endswith(".xls"):
+        try:
+            return pd.read_excel(io.BytesIO(data), engine="xlrd")
+        except Exception as exc:
+            raise ValueError(
+                "旧版 .xls 读取失败，请用 Excel 另存为 .xlsx 后重新上传。"
+            ) from exc
+    if name.endswith((".csv", ".txt")):
+        return _read_csv_bytes(data)
     raise ValueError("仅支持 CSV / XLSX 文件。")
 
 
@@ -147,7 +203,12 @@ def _defaults(config: dict) -> dict:
     }
 
 
-def parse_sku(value: object) -> tuple[float, float]:
+def parse_sku(value: object, default_store: float = 1.0) -> tuple[float, float]:
+    """解析“145-802”这类 SKU；没有门店号时按 default_store + 尾部数字处理。
+
+    例如单店导出的“SKU0001”会解析成 (default_store, 1)，避免整表因为
+    没有门店列被丢弃；门店角色导入时会传入自己的门店号。
+    """
     text = str(value or "").strip().upper().replace("SKU", "").strip()
     for sep in ("-", "_", "/", "—", "–"):
         if sep in text:
@@ -155,8 +216,53 @@ def parse_sku(value: object) -> tuple[float, float]:
             try:
                 return float(int(left.strip())), float(int(right.strip()))
             except (TypeError, ValueError):
-                return float("nan"), float("nan")
+                break
+    match = re.search(r"(\d+)\s*$", text)
+    if match:
+        return float(default_store), float(int(match.group(1)))
     return float("nan"), float("nan")
+
+
+def _last_valid(series: pd.Series):
+    valid = series.dropna()
+    return valid.iloc[-1] if not valid.empty else np.nan
+
+
+def _collapse_daily_ledger(out: pd.DataFrame) -> pd.DataFrame:
+    """把“每个 SKU 每天一行”的流水汇总成一条补货快照。
+
+    日均销量取均值；库存、保质期、临期数量取日期最新的一条；
+    商品名称取最后一条非空值。没有日期列或本来就是一 SKU 一行时原样返回。
+    """
+    if "日期" not in out.columns or "SKU" not in out.columns:
+        return out
+    dates = pd.to_datetime(out["日期"], errors="coerce")
+    if dates.isna().all():
+        return out
+    work = out.copy()
+    work["_date"] = dates
+    key_cols = ["SKU"]
+    if "store_id" in work.columns and work["store_id"].notna().any():
+        key_cols.append("store_id")
+    if "product_id" in work.columns and work["product_id"].notna().any():
+        key_cols.append("product_id")
+    if not work.duplicated(key_cols, keep=False).any():
+        return out
+    work = work.sort_values("_date")
+    aggregations: dict[str, object] = {}
+    for column in work.columns:
+        if column in key_cols or column == "_date":
+            continue
+        if column == "日均销量":
+            aggregations[column] = "mean"
+        elif column in ("P90日销", "销量标准差"):
+            aggregations[column] = "mean"
+        else:
+            aggregations[column] = _last_valid
+    return (
+        work.groupby(key_cols, as_index=False, sort=False, dropna=False)
+        .agg(aggregations)
+    )
 
 
 def _round_up(qty: float, pack: int, min_qty: int) -> int:
@@ -171,7 +277,10 @@ def _round_up(qty: float, pack: int, min_qty: int) -> int:
 
 
 def prepare_frame(
-    df: pd.DataFrame, mapping: dict[str, str], config: dict
+    df: pd.DataFrame,
+    mapping: dict[str, str],
+    config: dict,
+    default_store: float = 1.0,
 ) -> tuple[pd.DataFrame, list[str]]:
     """把用户表清洗成 canonical 列；返回 (canonical, 提示信息)。"""
     defaults = _defaults(config)
@@ -181,20 +290,38 @@ def prepare_frame(
     for field in (
         "SKU", "store_id", "product_id", "库存", "日均销量", "保质期", "提前期",
         "商品名称", "P90日销", "销量标准差", "临期数量", "服务水平",
-        "目标覆盖天数", "最小订货量", "包装倍数",
+        "目标覆盖天数", "最小订货量", "包装倍数", "日期",
     ):
         if field in mapping:
             out[field] = df[mapping[field]]
 
+    # 支持“每 SKU 每天一行”的日销存流水：先汇总成一条补货快照。
+    if "日期" in out.columns and "SKU" in out.columns:
+        before_rows = len(out)
+        out = _collapse_daily_ledger(out)
+        if len(out) < before_rows:
+            issues.append(
+                f"检测到按日流水（{before_rows} 行），已按 SKU 汇总为 "
+                f"{len(out)} 条：日均销量取均值，库存/保质期取最新一天。"
+            )
+
     # 门店 + 商品号：优先显式两列，缺失时从 SKU 解析。
-    store = _num(out["store_id"]) if "store_id" in out else pd.Series(np.nan, index=df.index)
-    pid = _num(out["product_id"]) if "product_id" in out else pd.Series(np.nan, index=df.index)
+    store = _num(out["store_id"]) if "store_id" in out else pd.Series(np.nan, index=out.index)
+    pid = _num(out["product_id"]) if "product_id" in out else pd.Series(np.nan, index=out.index)
     if "SKU" in out:
-        parsed = out["SKU"].astype(str).apply(parse_sku)
+        parsed = out["SKU"].astype(str).apply(
+            lambda value: parse_sku(value, default_store)
+        )
         sku_store = parsed.apply(lambda x: x[0])
         sku_pid = parsed.apply(lambda x: x[1])
         store = store.fillna(sku_store)
         pid = pid.fillna(sku_pid)
+        if "store_id" not in mapping:
+            known_store = store.dropna()
+            if not known_store.empty and (known_store == float(default_store)).all():
+                issues.append(
+                    f"未提供门店号，SKU 按 {int(default_store)} 号店导入。"
+                )
 
     canonical = pd.DataFrame(
         {

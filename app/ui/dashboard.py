@@ -72,7 +72,7 @@ import report_export  # noqa: E402 - Excel / PDF 日报导出
 # 强制重载，避免 AttributeError: module 'product_names' has no attribute 'sku_display'。
 if (
     getattr(product_names, "PRODUCT_NAMES_VERSION", 0) < 3
-    or getattr(imported_data, "IMPORTED_DATA_VERSION", 0) < 2
+    or getattr(imported_data, "IMPORTED_DATA_VERSION", 0) < 3
     or getattr(report_export, "REPORT_EXPORT_VERSION", 0) < 2
     or not hasattr(product_names, "sku_display")
 ):
@@ -3253,6 +3253,14 @@ def _clear_import() -> None:
     st.rerun()
 
 
+def _default_import_store() -> int:
+    """单店角色导入无门店列的文件时，默认落到自己的门店。"""
+    allowed = _allowed_stores()
+    if allowed is not None and len(allowed) == 1:
+        return int(next(iter(allowed)))
+    return 1
+
+
 def _render_data_import() -> None:
     config = load_fresh_config()
     rep_cfg = (config or {}).get("replenishment", {}) or {}
@@ -3327,7 +3335,10 @@ def _render_data_import() -> None:
                                 f"提前期 {default_lead:g} 天。"
                             )
                         canonical, issues = imported_data.prepare_frame(
-                            raw_df, mapping, config
+                            raw_df,
+                            mapping,
+                            config,
+                            default_store=_default_import_store(),
                         )
                         if canonical.empty:
                             st.error(
