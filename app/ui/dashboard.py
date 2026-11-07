@@ -1114,8 +1114,8 @@ div[data-testid="stHorizontalBlock"]:has(.source-egg-anchor) > div[data-testid="
 .site-footer {
   position: relative;
   width: 100vw;
-  margin: 0 calc(50% - 50vw) 0;
-  padding: 48px 0 58px;
+  margin: -20px calc(50% - 50vw) -96px;
+  padding: 38px 0 44px;
   box-sizing: border-box;
   color: #173c25;
   text-align: center;
@@ -1591,8 +1591,8 @@ div[data-testid="stDownloadButton"] button:hover {
 
 /* ---------- 内容页脚：参考模板的深绿页脚 ---------- */
 .site-footer-main {
-  margin: 48px -32px 0;
-  padding: 34px 32px 46px;
+  margin: 16px -32px -18px;
+  padding: 24px 32px 28px;
   background: #eaf3ec;
   border-top: 1px solid #dbe9de;
   color: #3f5f4a;
@@ -1619,7 +1619,8 @@ div[data-testid="stDownloadButton"] button:hover {
 }
 @media (max-width: 640px) {
   .feature-strip { grid-template-columns: 1fr; }
-  .site-footer-main { margin: 36px -12px 0; padding: 26px 16px 30px; }
+  .site-footer-main { margin: 12px -12px -12px; padding: 18px 16px 22px; }
+  .site-footer { margin: -16px calc(50% - 50vw) -84px; padding: 30px 0 36px; }
   .site-footer-main-inner { grid-template-columns: 1fr; gap: 16px; }
   .site-footer-main-bottom { flex-direction: column; }
 }
@@ -2126,7 +2127,7 @@ def _feature_strip_html() -> str:
 def _site_footer_html() -> str:
     """页面底部深绿页脚，参考模板的电商落地页收尾。"""
     return (
-        '<footer class="site-footer-main">'
+        '<div class="site-footer-main">'
         '<div class="site-footer-main-inner">'
         "<div>"
         '<div class="site-footer-main-brand">智链参谋</div>'
@@ -2152,7 +2153,7 @@ def _site_footer_html() -> str:
         "<span>© 2026 智链参谋 · 生鲜前置仓补货决策智能体</span>"
         "<span>演示版本 · 数据仅用于产品展示</span>"
         "</div>"
-        "</footer>"
+        "</div>"
     )
 
 
