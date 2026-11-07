@@ -1625,6 +1625,146 @@ div[data-testid="stDownloadButton"] button:hover {
   .site-footer-main-bottom { flex-direction: column; }
 }
 
+/* ---------- 今日简报：首屏结论 ---------- */
+.daily-brief {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 22px 26px;
+  margin: 14px 0 18px;
+  border: 1px solid #d5e9da;
+  border-left: 6px solid #2E9E5B;
+  border-radius: 18px;
+  background: linear-gradient(100deg, #ffffff 0%, #f2faf4 62%, #e9f7ee 100%);
+  box-shadow: 0 10px 28px rgba(20, 60, 35, .08);
+}
+.daily-brief-icon { font-size: 26px; line-height: 1.4; flex: 0 0 auto; }
+.daily-brief-body { min-width: 0; }
+.daily-brief-title {
+  font-size: 12px; font-weight: 800; letter-spacing: .14em;
+  color: #1f7a3d; text-transform: uppercase; margin-bottom: 6px;
+}
+.daily-brief-text {
+  font-size: clamp(17px, 1.35vw, 21px);
+  line-height: 1.72;
+  font-weight: 650;
+  color: #102a19;
+}
+@media (max-width: 640px) {
+  .daily-brief { padding: 16px 16px; gap: 10px; }
+  .daily-brief-text { font-size: 16px; line-height: 1.65; }
+}
+
+/* ---------- 短保报损对比：把模型优势做成首屏对照 ---------- */
+.spoilage-compare {
+  display: flex; align-items: center; gap: 22px; flex-wrap: wrap;
+  margin: 14px 0 2px; padding: 16px 22px;
+  border: 1px solid #c9e8d2; border-radius: 16px;
+  background: linear-gradient(100deg, #f4fcf6 0%, #ffffff 60%, #f0fbf3 100%);
+  box-shadow: 0 8px 22px rgba(20, 60, 35, .06);
+}
+.spoilage-copy { min-width: 200px; }
+.spoilage-title {
+  font-size: 12px; font-weight: 800; letter-spacing: .1em;
+  color: #1f7a3d; text-transform: uppercase;
+}
+.spoilage-note { margin-top: 4px; font-size: 12px; color: #5f7a66; }
+.spoilage-metrics {
+  display: flex; align-items: baseline; gap: 16px;
+  margin-left: auto; flex-wrap: wrap;
+}
+.spoilage-item { text-align: right; }
+.spoilage-item .label {
+  font-size: 11.5px; color: #6b7f94; font-weight: 600;
+}
+.spoilage-item .value {
+  font-size: 2.15rem; font-weight: 800; line-height: 1.1;
+  color: #145c2c; font-variant-numeric: tabular-nums;
+}
+.spoilage-item.old .value { font-size: 1.55rem; color: #8a8f88; }
+.spoilage-drop {
+  padding: 6px 12px; border-radius: 999px;
+  background: #1f7a3d; color: #fff; font-size: 14px; font-weight: 800;
+  box-shadow: 0 4px 12px rgba(31, 122, 61, .28);
+}
+@media (max-width: 640px) {
+  .spoilage-compare { padding: 14px 16px; gap: 12px; }
+  .spoilage-metrics { margin-left: 0; }
+  .spoilage-item .value { font-size: 1.7rem; }
+  .spoilage-item.old .value { font-size: 1.25rem; }
+}
+
+/* ---------- 补货建议卡：详情区视觉中心 ---------- */
+.reco-hero {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 24px; flex-wrap: wrap;
+  margin: 8px 0 12px; padding: 18px 24px;
+  border: 1px solid #cfe6d5; border-radius: 16px;
+  background: linear-gradient(120deg, #ffffff 0%, #f3fbf5 100%);
+  box-shadow: 0 10px 26px rgba(20, 60, 35, .08);
+}
+.reco-hero-main { min-width: 0; flex: 1 1 520px; }
+.reco-hero-label {
+  font-size: 12.5px; font-weight: 700; color: #5f6f63; letter-spacing: .02em;
+}
+.reco-hero-line {
+  display: flex; align-items: baseline; gap: 12px;
+  flex-wrap: wrap; margin-top: 2px;
+}
+.reco-hero-value {
+  font-size: clamp(2.6rem, 3.4vw, 3.4rem); font-weight: 800;
+  line-height: 1; color: #145c2c; letter-spacing: -.03em;
+  font-variant-numeric: tabular-nums;
+}
+.reco-hero-unit { font-size: 1rem; font-weight: 600; color: #4f6b57; margin-left: 2px; }
+.reco-hero-line .badge { margin-top: 0; }
+.reco-hero-reason {
+  margin-top: 6px; font-size: 12.5px; line-height: 1.6; color: #4a5a4e;
+}
+.reco-hero-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.reco-chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.reco-chip {
+  padding: 4px 9px; border-radius: 999px;
+  background: #eef7ef; border: 1px solid #d7ebdb;
+  color: #3f5f4a; font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.reco-chip b { color: #145c2c; }
+.metric-grid.compact { gap: 8px; }
+.metric-grid.compact .metric-card { padding: 10px 12px; }
+.metric-grid.compact .metric-value { font-size: 1.3rem; }
+
+/* ---------- 详情区：右侧四块指标与折线图同高对齐 ---------- */
+.detail-grid { display: flex; gap: 26px; align-items: stretch; margin-top: 4px; }
+.detail-chart { flex: 3 1 0; min-width: 0; }
+.detail-chart .chart-svg { margin: 0; }
+.detail-stats {
+  flex: 2 1 0; min-width: 0;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.detail-stat {
+  flex: 1 1 0;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 10px 16px;
+  background: #ffffff; border: 1px solid #e3ebe3;
+  border-radius: 12px; box-shadow: 0 4px 14px rgba(20, 60, 35, .04);
+}
+.detail-stat .label { color: #52514e; font-size: 13px; font-weight: 600; }
+.detail-stat .value {
+  color: #145c2c; font-size: 1.35rem; font-weight: 800;
+  line-height: 1.1; font-variant-numeric: tabular-nums;
+}
+.detail-stat .unit { font-size: .82rem; color: #6b7f94; margin-left: 3px; font-weight: 600; }
+@media (max-width: 768px) {
+  .detail-grid { flex-direction: column; gap: 12px; }
+  .detail-stats { gap: 8px; }
+  .detail-stat { padding: 9px 14px; }
+}
+@media (max-width: 640px) {
+  .reco-hero { padding: 14px 16px; gap: 12px; }
+  .reco-hero-side { align-items: flex-start; }
+  .reco-chips { justify-content: flex-start; }
+}
+
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -2029,6 +2169,10 @@ def fresh_kpi_values(
             ]
             if not rows.empty:
                 values[key] = float(rows.iloc[0]["spoilage_rate"])
+                if "fill_rate" in rows.columns:
+                    values[f"fill_{policy.lower()}"] = float(
+                        rows.iloc[0]["fill_rate"]
+                    )
     return values
 
 
@@ -2199,7 +2343,7 @@ def _fresh_hero_carousel_html(
   .hero-carousel {
     position: relative;
     width: 100%;
-    height: 340px;
+    height: 280px;
     overflow: hidden;
     border-radius: 0;
     background: #0b2a1a;
@@ -2382,7 +2526,7 @@ def _fresh_hero_carousel_html(
     border-color: #7de3a1;
   }
   @media (max-width: 760px) {
-    .hero-carousel { height: 320px; }
+    .hero-carousel { height: 260px; }
     .hero-copy { padding: 22px 18px 48px; }
     .hero-copy h1 { font-size: 20px; }
     .hero-copy p { font-size: 12.5px; }
@@ -2638,19 +2782,37 @@ def render_fresh_kpi(
             "</article>"
         )
 
-    foot_parts = []
     short_shelf = values.get("short_shelf")
     c_rate = values.get("spoilage_c")
     b_rate = values.get("spoilage_b")
+    foot = ""
     if short_shelf is not None and c_rate is not None and b_rate is not None:
-        foot_parts.append(
-            f"短保报损对比（{int(short_shelf)} 天档）：本方案 "
-            f"{float(c_rate):.2%} <span class=\"ov-vs\">vs</span> 传统补货 "
-            f"{float(b_rate):.2%}"
+        c_value = float(c_rate)
+        b_value = float(b_rate)
+        drop = (b_value - c_value) / b_value if b_value else 0.0
+        fill_c = values.get("fill_c")
+        fill_b = values.get("fill_b")
+        if fill_c is not None and fill_b is not None:
+            note = (
+                f"满足率 B {float(fill_b):.2%} / C {float(fill_c):.2%}，"
+                "优势来自效期约束，不是少卖货"
+            )
+        else:
+            note = "优势来自效期约束，不是少卖货"
+        foot = (
+            '<div class="spoilage-compare">'
+            '<div class="spoilage-copy">'
+            f'<div class="spoilage-title">{int(short_shelf)} 天短保档 · 报损率对比</div>'
+            f'<div class="spoilage-note">{note}</div>'
+            "</div>"
+            '<div class="spoilage-metrics">'
+            '<div class="spoilage-item old"><div class="label">传统补货</div>'
+            f'<div class="value">{b_value:.2%}</div></div>'
+            f'<div class="spoilage-drop">↓ {drop:.1%}</div>'
+            '<div class="spoilage-item"><div class="label">效期感知方案</div>'
+            f'<div class="value">{c_value:.2%}</div></div>'
+            "</div></div>"
         )
-    foot = (
-        '<div class="ov-foot">' + " · ".join(foot_parts) + "</div>" if foot_parts else ""
-    )
 
     st.markdown(
         '<section class="overview-dock" id="section-overview" '
@@ -4515,10 +4677,6 @@ def render_fresh_replenishment(
             f"共 {len(repl):,} 条导入序列；ROP_P90、目标水位、效期上限、"
             "建议订货量与紧急度均按导入数据实时计算。"
         )
-    else:
-        st.caption(
-            f"共 {len(repl):,} 条序列；库存、订货与紧急度来自补货快照 {snapshot}，页面不重算。"
-        )
 
     rep_cfg = (config or {}).get("replenishment", {}) or {}
     exp_threshold = int(rep_cfg.get("expiring_threshold_days", 1))
@@ -4755,12 +4913,9 @@ def render_fresh_replenishment(
     caption_col, export_col = st.columns([4.6, 1.0])
     with caption_col:
         st.caption(
-            f"当前筛选 {len(view):,} / {len(repl):,} 条；"
-            f"第 {current_page} / {total_pages} 页（本页 {len(page_display)} 条）。"
-            f"默认按紧急度、临期数量降序。"
-            f"库存与订货单位：{FRESH_UNIT}；表头排序作用于当前页，翻页用数字按钮。"
-            f"临期 = 剩余保质期 ≤ {exp_threshold} 天；相关行浅橙高亮，"
-            f"橙色“临期”标签表示需关注，绿色 ✓ 表示未临期。"
+            f"筛选 {len(view):,} / {len(repl):,} 条 · "
+            f"第 {current_page}/{total_pages} 页 · "
+            f"单位 {FRESH_UNIT} · 临期 ≤ {exp_threshold} 天"
         )
     with export_col:
         st.download_button(
@@ -5131,75 +5286,66 @@ def render_fresh_detail(
         if not group.empty:
             group = _as_date(group, "dt").sort_values("dt")
 
-    left, right = st.columns([3, 2], gap="large")
-    with left:
-        if group is not None and not group.empty:
-            svg = _svg_fresh_forecast(group, shelf_life)
-            st.markdown(f'<div class="chart-svg">{svg}</div>', unsafe_allow_html=True)
-            dmin = group["dt"].min().strftime("%Y-%m-%d")
-            dmax = group["dt"].max().strftime("%Y-%m-%d")
-            st.caption(
-                f"横轴 {dmin} ~ {dmax}；蓝线为 P50 / P90 预测，黑点为当日实测销量。"
-            )
-        else:
-            st.warning("缺少该序列的 7 天预测数据，请先运行生鲜预测脚本。")
-
-    with right:
-        on_hand = float(row["on_hand"])
-        rop = float(row["rop_p90"])
-        suggest = int(row["suggest_qty"])
-        expiring = float(row["expiring_qty"])
-        st.markdown(
-            f"""
-            <div class="metric-grid">
-              <div class="metric-card">
-                <div class="metric-label">现有库存</div>
-                <div class="metric-value">{on_hand:,.2f}<span class="metric-unit">{FRESH_UNIT}</span></div>
-              </div>
-              <div class="metric-card">
-                <div class="metric-label">ROP_P90</div>
-                <div class="metric-value">{rop:,.2f}<span class="metric-unit">{FRESH_UNIT}</span></div>
-              </div>
-              <div class="metric-card">
-                <div class="metric-label">效期修正目标</div>
-                <div class="metric-value">{target_eff:,.2f}<span class="metric-unit">{FRESH_UNIT}</span></div>
-              </div>
-              <div class="metric-card">
-                <div class="metric-label">建议订货</div>
-                <div class="metric-value">{suggest:,}<span class="metric-unit">{FRESH_UNIT}</span></div>
-              </div>
-              <div class="metric-card">
-                <div class="metric-label">临期数量</div>
-                <div class="metric-value">{expiring:,.2f}<span class="metric-unit">{FRESH_UNIT}</span></div>
-              </div>
-              <div class="metric-card">
-                <div class="metric-label">保质期档</div>
-                <div class="metric-value">{shelf_life}<span class="metric-unit">天</span></div>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
+    on_hand = float(row["on_hand"])
+    rop = float(row["rop_p90"])
+    suggest = int(row["suggest_qty"])
+    expiring = float(row["expiring_qty"])
     urgency = str(row["urgency"])
     advice = build_fresh_advice(row, cap_info, shelf_life, urgent_ratio)
     cap_display = float(cap_info["cap"]) if cap_info else float(row["target_level"])
+
+    # 补货建议放在详情区最上方，做成唯一视觉中心。
     st.markdown(
         f"""
-        <div class="reco-card">
-          <div class="reco-label">今天的补货建议 · {html.escape(_display_sku(*selected))}</div>
-          <div class="reco-value">{int(row['suggest_qty']):,}<span class="reco-unit">{FRESH_UNIT}</span></div>
-          <span class="badge {badge_class(urgency)}">{html.escape(urgency)}</span>
-          <div class="reco-reason">{html.escape(advice)}</div>
-          <div class="reco-meta">
-            效期上限 {cap_display:,.2f} {FRESH_UNIT} · 配置倍数 {multiplier:.2f} ·
-            效期修正目标 {target_eff:,.2f} {FRESH_UNIT}
+        <div class="reco-hero">
+          <div class="reco-hero-main">
+            <div class="reco-hero-label">今天的补货建议 · {html.escape(_display_sku(*selected))}</div>
+            <div class="reco-hero-line">
+              <div class="reco-hero-value">{suggest:,}<span class="reco-hero-unit">{FRESH_UNIT}</span></div>
+              <span class="badge {badge_class(urgency)}">{html.escape(urgency)}</span>
+            </div>
+            <div class="reco-hero-reason">{html.escape(advice)}</div>
+          </div>
+          <div class="reco-hero-side">
+            <div class="reco-chips">
+              <span class="reco-chip">效期上限 <b>{cap_display:,.2f}</b> {FRESH_UNIT}</span>
+              <span class="reco-chip">修正目标 <b>{target_eff:,.2f}</b> {FRESH_UNIT}</span>
+              <span class="reco-chip">保质期 <b>{shelf_life}</b> 天</span>
+              <span class="reco-chip">配置倍数 <b>{multiplier:.2f}</b></span>
+            </div>
           </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
+    stats_html = (
+        '<div class="detail-stats">'
+        '<div class="detail-stat"><span class="label">现有库存</span>'
+        f'<span class="value">{on_hand:,.2f}<span class="unit">{FRESH_UNIT}</span></span></div>'
+        '<div class="detail-stat"><span class="label">ROP_P90</span>'
+        f'<span class="value">{rop:,.2f}<span class="unit">{FRESH_UNIT}</span></span></div>'
+        '<div class="detail-stat"><span class="label">效期上限</span>'
+        f'<span class="value">{cap_display:,.2f}<span class="unit">{FRESH_UNIT}</span></span></div>'
+        '<div class="detail-stat"><span class="label">临期数量</span>'
+        f'<span class="value">{expiring:,.2f}<span class="unit">{FRESH_UNIT}</span></span></div>'
+        "</div>"
+    )
+    if group is not None and not group.empty:
+        svg = _svg_fresh_forecast(group, shelf_life)
+        st.markdown(
+            '<div class="detail-grid">'
+            f'<div class="detail-chart"><div class="chart-svg">{svg}</div></div>'
+            f"{stats_html}"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.warning("缺少该序列的 7 天预测数据，请先运行生鲜预测脚本。")
+        st.markdown(stats_html, unsafe_allow_html=True)
+
+    # 历史汇总 + 预测窗口压成一行，避免小字占掉大块高度。
+    meta_parts: list[str] = []
     if summary is not None and not summary.empty:
         sub = summary[
             (summary["store_id"].astype(int) == selected[0])
@@ -5207,28 +5353,16 @@ def render_fresh_detail(
         ]
         if not sub.empty:
             s = sub.iloc[0]
-            st.caption(
-                f"序列历史汇总（官方脱敏口径）：{int(s['coverage_days'])} 天累计销量 "
-                f"{float(s['total_sale']):,.2f} {FRESH_UNIT}，日变异系数 {float(s['cv']):.3f}。"
+            meta_parts.append(
+                f"{int(s['coverage_days'])} 天累计 {float(s['total_sale']):,.2f} {FRESH_UNIT}"
             )
-
-    imported_mode = bool(st.session_state.get("use_imported_data"))
-    source_label = "用户导入数据" if imported_mode else "补货快照"
+            meta_parts.append(f"日变异系数 {float(s['cv']):.3f}")
     if group is not None and not group.empty:
-        dmin = group["dt"].min().strftime("%Y-%m-%d")
-        dmax = group["dt"].max().strftime("%Y-%m-%d")
-        forecast_label = (
-            "7 天预测（按日均销量平推）"
-            if imported_mode
-            else "7 天预测表"
-        )
-        st.caption(
-            f"数据来源：{source_label} {snapshot}（库存 / 订货）；{forecast_label} "
-            f"{dmin} ~ {dmax}（P50 / P90 / 实测）。"
-            f"效期上限 = 保质期内预计可售量 × 配置倍数 {multiplier:.2f}。"
-        )
-    else:
-        st.caption(f"数据来源：{source_label} {snapshot}。")
+        dmin = group["dt"].min().strftime("%m-%d")
+        dmax = group["dt"].max().strftime("%m-%d")
+        meta_parts.append(f"预测窗口 {dmin} ~ {dmax}")
+    if meta_parts:
+        st.caption(" · ".join(meta_parts))
 
 
 # ---------------------------------------------------------------------------
@@ -5649,6 +5783,105 @@ def normalize_dialect(text: str, dialect: str) -> tuple[str, list[tuple[str, str
     return result, replacements
 
 
+def _dialect_product_targets(
+    normalized: str,
+    replacements: list[tuple[str, str]],
+    repl: pd.DataFrame | None,
+) -> list[dict]:
+    """把方言词落到当前表格里真实存在的商品，优先紧急、建议量大的序列。"""
+    if repl is None or repl.empty or not replacements:
+        return []
+    targets: list[dict] = []
+    seen: set[tuple[str, int, int]] = set()
+    for src, dst in replacements:
+        if not dst:
+            continue
+        candidates: list[tuple[object, str]] = []
+        for row in repl.itertuples():
+            try:
+                name = _display_name(row.store_id, row.product_id)
+            except Exception:
+                continue
+            if name == dst or dst in name:
+                candidates.append((row, name))
+        if not candidates:
+            continue
+        candidates.sort(
+            key=lambda item: (
+                0 if item[1] == dst else 1,
+                URGENCY_RANK.get(str(getattr(item[0], "urgency", "")), 9),
+                -int(getattr(item[0], "suggest_qty", 0) or 0),
+                int(item[0].store_id),
+                int(item[0].product_id),
+            )
+        )
+        row, name = candidates[0]
+        key = (src, int(row.store_id), int(row.product_id))
+        if key in seen:
+            continue
+        seen.add(key)
+        targets.append(
+            {
+                "src": src,
+                "dst": dst,
+                "name": name,
+                "store_id": int(row.store_id),
+                "product_id": int(row.product_id),
+                "label": _display_sku(row.store_id, row.product_id),
+            }
+        )
+    return targets
+
+
+def _dialect_note_text(
+    replacements: list[tuple[str, str]], targets: list[dict]
+) -> str | None:
+    """给用户看的解释：方言词 → 表格中的具体商品。"""
+    if not replacements:
+        return None
+    matched = {(t["src"], t["dst"]) for t in targets}
+    parts = [
+        f"{t['name']}（{t['src']}，{t['store_id']}-{t['product_id']}）"
+        for t in targets
+    ]
+    for src, dst in replacements:
+        if (src, dst) not in matched:
+            parts.append(f"{dst}（{src}，当前表格未找到对应商品）")
+    return "方言识别：" + "；".join(parts)
+
+
+def _enrich_dialect_question(question: str, targets: list[dict]) -> str:
+    """把已解析的商品写进问题，避免 Agent 再去猜方言词指哪个商品。"""
+    if not targets:
+        return question
+    hints = "；".join(
+        f"用户说的「{t['src']}」指表格中的「{t['name']}（{t['store_id']}-{t['product_id']}）」"
+        for t in targets
+    )
+    return f"{question}\n（方言说明：{hints}，请直接按该商品和 SKU 回答。）"
+
+
+def _annotate_dialect_answer(answer: str, targets: list[dict]) -> str:
+    """回答里的商品名后补一次方言备注，例如“沙地土豆（洋芋，145-104）”。"""
+    text = str(answer or "")
+    for target in targets:
+        if not text:
+            break
+        name = str(target["name"])
+        src = str(target["src"])
+        if not name or f"{name}（{src}" in text:
+            continue
+        label = f"{name}（{target['store_id']}-{target['product_id']}）"
+        annotated = (
+            f"{name}（{src}，{target['store_id']}-{target['product_id']}）"
+        )
+        if label in text:
+            text = text.replace(label, annotated, 1)
+        elif name in text:
+            text = text.replace(name, f"{name}（{src}）", 1)
+    return text
+
+
 def _ask_agent(
     question: str,
     api_key: str,
@@ -5658,6 +5891,7 @@ def _ask_agent(
     source_note: str | None,
     display_question: str | None = None,
     dialect_note: str | None = None,
+    answer_targets: list[dict] | None = None,
 ) -> None:
     agent = get_agent()
     activate_agent_dataset(agent, dataset)
@@ -5686,10 +5920,14 @@ def _ask_agent(
             tools = []
             messages.append({"role": "assistant", "content": answer})
 
+    content = answer or "（模型未返回内容）"
+    if dataset == "freshretail":
+        content = _localize_sku_text(content)
+    content = _annotate_dialect_answer(content, answer_targets or [])
     display.append(
         {
             "role": "assistant",
-            "content": answer or "（模型未返回内容）",
+            "content": content,
             "tools": tools,
             "source": source_note,
         }
@@ -5726,6 +5964,7 @@ def render_chat(
     quick_questions: list[str],
     placeholder: str,
     source_note: str | None = None,
+    context_repl: pd.DataFrame | None = None,
 ) -> None:
     agent = get_agent()
     activate_agent_dataset(agent, dataset)
@@ -5810,15 +6049,13 @@ def render_chat(
     if question:
         dialect = DIALECT_OPTIONS[dialect_label]
         normalized, replacements = normalize_dialect(question, dialect)
-        dialect_note = None
-        if replacements:
-            dialect_note = "方言归一化：" + "、".join(
-                f"{src}→{dst}" for src, dst in replacements
-            )
+        targets = _dialect_product_targets(normalized, replacements, context_repl)
+        dialect_note = _dialect_note_text(replacements, targets)
+        enriched_question = _enrich_dialect_question(normalized, targets)
         # 首屏不加载 Agent 数据仓库；只有真正提问时才加载（约 5.4MB）。
         loaded_store = store() if callable(store) else store
         _ask_agent(
-            normalized,
+            enriched_question,
             api_key,
             loaded_store,
             dataset,
@@ -5826,6 +6063,7 @@ def render_chat(
             source_note,
             display_question=question,
             dialect_note=dialect_note,
+            answer_targets=targets,
         )
         display = st.session_state[display_key]
 
@@ -6464,7 +6702,7 @@ def render_top_navbar(snapshot: str) -> None:
 # 独立函数，只读当前已加载的补货表（不重算、不调模型），不影响轮播图与顶栏。
 # ---------------------------------------------------------------------------
 def build_daily_brief(repl: pd.DataFrame | None, snapshot: str) -> str:
-    """用内存里的补货表拼一句店长口吻的晨会播报；数据为空时返回空串。"""
+    """按当前登录身份生成晨会播报；数据为空时返回空串。"""
     if repl is None or repl.empty:
         return ""
 
@@ -6472,7 +6710,8 @@ def build_daily_brief(repl: pd.DataFrame | None, snapshot: str) -> str:
         urgency = repl["urgency"].astype(str).str.strip()
     else:
         urgency = pd.Series("", index=repl.index, dtype="object")
-    urgent_n = int((urgency == "紧急").sum())
+    urgent_mask = urgency == "紧急"
+    urgent_n = int(urgent_mask.sum())
     suggest_n = int((urgency == "建议补货").sum())
     plan_n = int((urgency == "计划补货").sum())
 
@@ -6482,42 +6721,78 @@ def build_daily_brief(repl: pd.DataFrame | None, snapshot: str) -> str:
         expiring = pd.Series(0.0, index=repl.index)
     expiring_kinds = int((expiring > 0).sum())
     expiring_units = float(expiring[expiring > 0].sum())
+    store_count = int(repl["store_id"].nunique()) if "store_id" in repl.columns else 0
+    if "store_id" in repl.columns and urgent_n:
+        urgent_stores = int(repl.loc[urgent_mask, "store_id"].nunique())
+    else:
+        urgent_stores = 0
 
-    head = (
-        f"今天有 {urgent_n} 条序列掉到紧急线"
-        if urgent_n
-        else "今天没有掉到紧急线的货"
-    )
+    source = "导入数据" if st.session_state.get("use_imported_data") else "补货快照"
+    role = _current_role()
+    scope = _store_scope_label()
+
+    top_label = ""
+    if urgent_n:
+        urgent_rows = repl[urgent_mask].sort_values(
+            "suggest_qty", ascending=False
+        )
+        if not urgent_rows.empty:
+            top_row = urgent_rows.iloc[0]
+            top_label = _display_sku(top_row["store_id"], top_row["product_id"])
+
+    if not urgent_n:
+        head = "没有掉到紧急线的货"
+    elif role in ("store_manager", "staff") and top_label:
+        head = f"有 {urgent_n} 条序列掉到紧急线，最急的是 {top_label}"
+    elif role == "supervisor":
+        head = f"有 {urgent_n} 条序列掉到紧急线，涉及 {urgent_stores} 家店"
+    else:
+        head = f"有 {urgent_n} 条序列掉到紧急线（涉及 {urgent_stores} 家门店）"
+
     expiry = (
         f"临期 {expiring_kinds} 种、约 {expiring_units:,.2f} {FRESH_UNIT} 得抓紧促销"
         if expiring_kinds
         else "临期这块今天空的"
     )
     tail = f"其余 {suggest_n} 条建议补货、{plan_n} 条计划补货按表排"
-    source = "导入数据" if st.session_state.get("use_imported_data") else "补货快照"
-    return (
-        f"店长早，{source} {snapshot}：{head}；{expiry}；{tail}，"
-        "拿不准的随时问我。"
-    )
+
+    if role == "store_manager":
+        opening = f"店长早，{scope}今天{head}"
+        closing = f"补货量和效期上限都在表里，拿不准的随时问我。数据源：{source} {snapshot}。"
+    elif role == "staff":
+        opening = f"早上好，{scope}今天{head}"
+        closing = "你当前是只读权限，需要改单请联系店长。"
+    elif role == "supervisor":
+        opening = f"督导早，你负责的 {store_count} 家店今天{head}"
+        closing = "需要审批的批次已放到补货单，建议先批紧急的。"
+    elif role == "hq":
+        opening = f"总公司早，{store_count} 家门店今天{head}"
+        closing = "全局指标和门店汇总在下方，可按门店下钻。"
+    elif role == "admin":
+        opening = f"管理员早，全部门店今天{head}"
+        closing = "全量数据与权限配置正常，异常批次可在补货单里处理。"
+    else:
+        opening = f"当前为游客浏览（全部门店演示数据），今天{head}"
+        closing = "登录后可查看本店范围和补货操作。"
+
+    return f"{opening}；{expiry}；{tail}。{closing}"
 
 
 def render_daily_brief(repl: pd.DataFrame | None, snapshot: str) -> None:
-    """页顶晨会播报卡片：只新增一段 HTML，不改动轮播图与顶栏布局。"""
+    """页顶晨会播报卡片：按身份生成，首屏结论字号加大。"""
     text = build_daily_brief(repl, snapshot)
     if not text:
         return
+    role_label = _role_label(_current_role())
+    highlighted = re.sub(
+        r"(\d[\d,]*\.?\d*)", r"<b>\1</b>", html.escape(text)
+    )
     st.markdown(
-        '<section role="note" style="display:flex;gap:12px;align-items:flex-start;'
-        "background:#FFFFFF;border:1px solid #DCE7E0;border-left:4px solid #2E9E5B;"
-        "border-radius:16px;padding:14px 18px;margin:14px 0 16px;"
-        'box-shadow:0 6px 18px rgba(11,42,74,.05);">'
-        '<span style="font-size:18px;line-height:1.35;flex:0 0 auto;">☀</span>'
-        "<div>"
-        '<div style="font-size:11px;font-weight:700;letter-spacing:.12em;'
-        'color:#6b7f94;text-transform:uppercase;margin-bottom:4px;">'
-        "今日简报 · 晨会播报</div>"
-        '<div style="font-size:14.5px;line-height:1.7;color:#0b0b0b;">'
-        f"{html.escape(text)}</div>"
+        '<section class="daily-brief" role="note">'
+        '<span class="daily-brief-icon">☀</span>'
+        '<div class="daily-brief-body">'
+        f'<div class="daily-brief-title">今日简报 · {html.escape(role_label)}视角</div>'
+        f'<div class="daily-brief-text">{highlighted}</div>'
         "</div></section>",
         unsafe_allow_html=True,
     )
@@ -6861,8 +7136,8 @@ def main_fresh() -> None:
                         allowed_stores
                     )
                 ].copy()
-            # 全局策略对比/扫描/模型指标只给总公司与管理员看
-            comparison = None
+            # 策略对比表只含保质期档的汇总指标（无门店明细），保留给首屏
+            # 展示“报损率对比”；扫描表与模型全局指标仍只给总公司/管理员。
             cap_sweep = None
             metrics = None
         if repl is not None and not repl.empty:
@@ -6887,22 +7162,6 @@ def main_fresh() -> None:
     render_notification_center(repl, config, snapshot)
     # 今日简报：页顶晨会播报，数字来自本次已加载的补货表。
     render_daily_brief(repl, snapshot)
-    if st.session_state.get("auth_logged_in"):
-        st.caption(
-            f"当前身份：{_role_label(_current_role())} · "
-            f"{st.session_state.get('auth_account', '')} · "
-            f"数据范围：{_store_scope_label()}"
-        )
-    else:
-        st.caption(
-            "当前为游客浏览（只读，全部门店演示数据）；"
-            "点右上角 👤 选择店长 / 店员 / 督导 / 总公司身份登录。"
-        )
-    if imported_meta is None and _can_upload_data():
-        st.caption(
-            "页面下方「导入自有数据」可完整接管 "
-            "KPI / 补货清单 / 导出 / 补货 Agent。"
-        )
     components.html(
         _fresh_hero_carousel_html(
             snapshot,
@@ -6911,9 +7170,8 @@ def main_fresh() -> None:
             int(values["expiring_series"]),
             suggest_total,
         ),
-        height=340,
+        height=280,
     )
-    st.markdown(_feature_strip_html(), unsafe_allow_html=True)
 
     if repl is None or repl.empty:
         if allowed_stores is not None:
@@ -6995,7 +7253,6 @@ def main_fresh() -> None:
         render_fresh_detail(repl, forecast, summary, config, caps, snapshot)
         render_history_section(summary, snapshot)
 
-    st.caption("注：销量单位已作展示化处理，底层为归一化销量指数")
     st.divider()
     st.markdown('<div id="section-agent"></div>', unsafe_allow_html=True)
     api_key = get_agent().load_api_key()
@@ -7011,6 +7268,7 @@ def main_fresh() -> None:
             if imported_meta
             else f"数据来源：补货快照 {snapshot}"
         ),
+        context_repl=repl,
     )
     st.markdown(_site_footer_html(), unsafe_allow_html=True)
     _inject_nav_scrollspy()
@@ -7364,7 +7622,7 @@ def _inject_floating_assistant() -> None:
           });
 
           window.setTimeout(function () {
-            showBubble(3000);
+            showBubble(6000);
           }, 400);
         })();
         """
